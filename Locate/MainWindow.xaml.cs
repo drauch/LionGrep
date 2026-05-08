@@ -219,21 +219,32 @@ public sealed partial class MainWindow : Window
     }
 
     private void OnSearchInRecentsClicked(object sender, RoutedEventArgs e) =>
-        ShowRecentsFlyout((Button)sender, MainViewModel.RecentsKeySearchIn, v => ViewModel.SearchIn = v);
+        ShowRecentsFlyout(SearchInBox, MainViewModel.RecentsKeySearchIn, v => ViewModel.SearchIn = v);
 
     private void OnSearchPatternRecentsClicked(object sender, RoutedEventArgs e) =>
-        ShowRecentsFlyout((Button)sender, MainViewModel.RecentsKeySearchPattern, v => ViewModel.SearchPattern = v);
+        ShowRecentsFlyout(SearchPatternBox, MainViewModel.RecentsKeySearchPattern, v => ViewModel.SearchPattern = v);
 
     private void OnReplacePatternRecentsClicked(object sender, RoutedEventArgs e) =>
-        ShowRecentsFlyout((Button)sender, MainViewModel.RecentsKeyReplacePattern, v => ViewModel.ReplacePattern = v);
+        ShowRecentsFlyout(ReplacePatternBox, MainViewModel.RecentsKeyReplacePattern, v => ViewModel.ReplacePattern = v);
 
     private void OnFileNamesRecentsClicked(object sender, RoutedEventArgs e) =>
-        ShowRecentsFlyout((Button)sender, MainViewModel.RecentsKeyFileNames, v => ViewModel.FileNames = v);
+        ShowRecentsFlyout(FileNamesBox, MainViewModel.RecentsKeyFileNames, v => ViewModel.FileNames = v);
 
     private void OnExcludePathsRecentsClicked(object sender, RoutedEventArgs e) =>
-        ShowRecentsFlyout((Button)sender, MainViewModel.RecentsKeyExcludePaths, v => ViewModel.ExcludePaths = v);
+        ShowRecentsFlyout(ExcludePathsBox, MainViewModel.RecentsKeyExcludePaths, v => ViewModel.ExcludePaths = v);
 
-    private void ShowRecentsFlyout(Button anchor, string fieldKey, Action<string> apply)
+    private void OnSearchInDoubleTapped(object sender, DoubleTappedRoutedEventArgs e) =>
+        ShowRecentsFlyout(SearchInBox, MainViewModel.RecentsKeySearchIn, v => ViewModel.SearchIn = v);
+    private void OnSearchPatternDoubleTapped(object sender, DoubleTappedRoutedEventArgs e) =>
+        ShowRecentsFlyout(SearchPatternBox, MainViewModel.RecentsKeySearchPattern, v => ViewModel.SearchPattern = v);
+    private void OnReplacePatternDoubleTapped(object sender, DoubleTappedRoutedEventArgs e) =>
+        ShowRecentsFlyout(ReplacePatternBox, MainViewModel.RecentsKeyReplacePattern, v => ViewModel.ReplacePattern = v);
+    private void OnFileNamesDoubleTapped(object sender, DoubleTappedRoutedEventArgs e) =>
+        ShowRecentsFlyout(FileNamesBox, MainViewModel.RecentsKeyFileNames, v => ViewModel.FileNames = v);
+    private void OnExcludePathsDoubleTapped(object sender, DoubleTappedRoutedEventArgs e) =>
+        ShowRecentsFlyout(ExcludePathsBox, MainViewModel.RecentsKeyExcludePaths, v => ViewModel.ExcludePaths = v);
+
+    private void ShowRecentsFlyout(FrameworkElement anchor, string fieldKey, Action<string> apply)
     {
         var items = _recentsStore.Get(fieldKey);
         var flyout = new MenuFlyout();
@@ -251,7 +262,7 @@ public sealed partial class MainWindow : Window
                 flyout.Items.Add(fi);
             }
         }
-        flyout.ShowAt(anchor);
+        flyout.ShowAt(anchor, new FlyoutShowOptions { Placement = FlyoutPlacementMode.Bottom });
     }
 
     private static string TruncateForMenu(string s)
@@ -280,9 +291,59 @@ public sealed partial class MainWindow : Window
         return new GridLength(Math.Max(30, current.Value + delta));
     }
 
-    // ---- Results: expand-all + double-click + copy ----
+    // ---- Results: expand-all + double-click + copy + open ----
     private async void OnExpandAllClicked(object sender, RoutedEventArgs e) => await ViewModel.ExpandAllAsync(true);
     private async void OnCollapseAllClicked(object sender, RoutedEventArgs e) => await ViewModel.ExpandAllAsync(false);
+
+    private void OnOpenWithEditor(object sender, RoutedEventArgs e)
+    {
+        var settings = _settingsStore.Load();
+        foreach (var f in SelectedFiles().Take(20))
+            OpenFileInEditor(f, settings.EditorCommand);
+    }
+
+    private async void OnExportToCsv(object sender, RoutedEventArgs e)
+    {
+        var picker = new Windows.Storage.Pickers.FileSavePicker { SuggestedFileName = "locate-results.csv" };
+        picker.FileTypeChoices.Add("CSV (UTF-8)", new List<string> { ".csv" });
+        WinRT.Interop.InitializeWithWindow.Initialize(picker, _windowHandle);
+        var file = await picker.PickSaveFileAsync();
+        if (file is null) return;
+        var csv = BuildCsv(ViewModel.Results.ToList());
+        await File.WriteAllTextAsync(file.Path, csv, new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
+    }
+
+    private async void OnOpenInExcel(object sender, RoutedEventArgs e)
+    {
+        var temp = System.IO.Path.Combine(System.IO.Path.GetTempPath(),
+            $"locate-{DateTime.Now:yyyyMMdd-HHmmss}.csv");
+        await File.WriteAllTextAsync(temp, BuildCsv(ViewModel.Results.ToList()),
+            new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = temp,
+                UseShellExecute = true,
+            });
+        }
+        catch (Exception ex)
+        {
+            ShowError("Could not open in default app", ex.Message);
+        }
+    }
+
+    private void OnOpenContainingFolder(object sender, RoutedEventArgs e)
+    {
+        foreach (var f in SelectedFiles().Take(10))
+        {
+            try
+            {
+                System.Diagnostics.Process.Start("explorer.exe", $"/select,\"{f.Path}\"");
+            }
+            catch { /* ignore */ }
+        }
+    }
 
     private void OnLineDoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
     {
@@ -293,17 +354,42 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private void OnFileRowDoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
+    private async void OnFileRowDoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
     {
-        if (sender is FrameworkElement { DataContext: FileMatchViewModel file })
+        e.Handled = true;
+        if (sender is not FrameworkElement { DataContext: FileMatchViewModel clicked }) return;
+
+        var selected = ResultsList.SelectedItems.OfType<FileMatchViewModel>().ToList();
+        // If the double-clicked row isn't part of the current selection, treat the click as targeting just it.
+        if (!selected.Contains(clicked))
+            selected = [clicked];
+
+        if (selected.Count > 1)
         {
-            var first = file.Lines.FirstOrDefault();
-            if (first is not null)
-                LaunchEditor(first.FilePath, first.LineNumber, first.Column + 1);
-            else
-                LaunchEditor(file.Path, 1, 1);
-            e.Handled = true;
+            var dialog = new ContentDialog
+            {
+                XamlRoot = Content.XamlRoot,
+                Title = $"Open {selected.Count:N0} files?",
+                Content = $"This will launch {selected.Count:N0} editor windows.",
+                PrimaryButtonText = "Open all",
+                CloseButtonText = "Cancel",
+                DefaultButton = ContentDialogButton.Close,
+            };
+            if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
         }
+
+        var settings = _settingsStore.Load();
+        foreach (var f in selected)
+            OpenFileInEditor(f, settings.EditorCommand);
+    }
+
+    private void OpenFileInEditor(FileMatchViewModel file, string editorCommand)
+    {
+        var first = file.Lines.FirstOrDefault();
+        if (first is not null)
+            _editorLauncher.TryLaunch(editorCommand, first.FilePath, first.LineNumber, first.Column + 1, out _);
+        else
+            _editorLauncher.TryLaunch(editorCommand, file.Path, 1, 1, out _);
     }
 
     private void LaunchEditor(string path, int line, int column)
@@ -311,12 +397,6 @@ public sealed partial class MainWindow : Window
         var settings = _settingsStore.Load();
         if (!_editorLauncher.TryLaunch(settings.EditorCommand, path, line, column, out var error))
             ShowError("Could not launch editor", error ?? "Unknown error.");
-    }
-
-    private void OnCopyAccelerator(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
-    {
-        CopyToClipboard(BuildCsv(SelectedFiles()));
-        args.Handled = true;
     }
 
     private void OnCopyName(object sender, RoutedEventArgs e) =>
@@ -481,6 +561,23 @@ public sealed partial class MainWindow : Window
     {
         args.Handled = true;
         await ConfirmAndReplaceAsync();
+    }
+
+    private void OnEscapeAccelerator(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    {
+        args.Handled = true;
+        if (ViewModel.IsSearching)
+            ViewModel.CancelSearchCommand.Execute(null);
+        else
+            RestoreFormRow();
+    }
+
+    private void RestoreFormRow()
+    {
+        if (FormStackPanel.ActualHeight > 0)
+            FormRow.Height = new GridLength(FormStackPanel.ActualHeight + 56);
+        else
+            FormRow.Height = new GridLength(1, GridUnitType.Star);
     }
 
     // ---- Replace with confirmation ----

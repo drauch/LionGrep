@@ -18,10 +18,12 @@
         <Grid.KeyboardAccelerators>
             <KeyboardAccelerator Key="Enter" Modifiers="Control" Invoked="OnCtrlEnterAccelerator" />
             <KeyboardAccelerator Key="Enter" Modifiers="Control,Menu" Invoked="OnCtrlAltEnterAccelerator" />
+            <KeyboardAccelerator Key="Escape" Invoked="OnEscapeAccelerator" />
         </Grid.KeyboardAccelerators>
         <Grid.RowDefinitions>
             <RowDefinition Height="32" />
             <RowDefinition x:Name="FormRow" Height="2*" MinHeight="0" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" MinHeight="120" />
         </Grid.RowDefinitions>
@@ -226,15 +228,19 @@
                         <TextBlock Text="Search for:" Style="{StaticResource FieldLabel}" Grid.Row="0" />
                         <TextBox x:Name="SearchPatternBox" Grid.Row="0" Grid.Column="1"
                                  Text="{x:Bind ViewModel.SearchPattern, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                 PlaceholderText="Pattern (text or regex)" FontSize="12" />
+                                 PlaceholderText="Pattern (text or regex)"
+                                 DoubleTapped="OnSearchPatternDoubleTapped"
+                                 FontSize="12" />
                         <Button Grid.Row="0" Grid.Column="2" Style="{StaticResource RecentsButton}" Click="OnSearchPatternRecentsClicked">
                             <FontIcon Glyph="&#xE823;" FontSize="12" />
                         </Button>
 
                         <TextBlock Text="Replace with:" Style="{StaticResource FieldLabel}" Grid.Row="1" />
-                        <TextBox Grid.Row="1" Grid.Column="1"
+                        <TextBox x:Name="ReplacePatternBox" Grid.Row="1" Grid.Column="1"
                                  Text="{x:Bind ViewModel.ReplacePattern, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                 PlaceholderText="Replacement (literal or $1 backrefs)" FontSize="12" />
+                                 PlaceholderText="Replacement (literal or $1 backrefs)"
+                                 DoubleTapped="OnReplacePatternDoubleTapped"
+                                 FontSize="12" />
                         <Button Grid.Row="1" Grid.Column="2" Style="{StaticResource RecentsButton}" Click="OnReplacePatternRecentsClicked">
                             <FontIcon Glyph="&#xE823;" FontSize="12" />
                         </Button>
@@ -290,9 +296,11 @@
                             </Grid.RowDefinitions>
 
                             <TextBlock Text="File names:" Style="{StaticResource FieldLabel}" Grid.Row="0" />
-                            <TextBox Grid.Row="0" Grid.Column="1"
+                            <TextBox x:Name="FileNamesBox" Grid.Row="0" Grid.Column="1"
                                      Text="{x:Bind ViewModel.FileNames, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                     PlaceholderText="*.cs|*.ts|!*.Generated.cs" FontSize="12" />
+                                     PlaceholderText="*.cs|*.ts|!*.Generated.cs"
+                                     DoubleTapped="OnFileNamesDoubleTapped"
+                                     FontSize="12" />
                             <Button Grid.Row="0" Grid.Column="2" Style="{StaticResource RecentsButton}" Click="OnFileNamesRecentsClicked">
                                 <FontIcon Glyph="&#xE823;" FontSize="12" />
                             </Button>
@@ -300,9 +308,11 @@
                                       IsChecked="{x:Bind ViewModel.FileNamesRegex, Mode=TwoWay}" VerticalAlignment="Center" />
 
                             <TextBlock Text="Exclude paths:" Style="{StaticResource FieldLabel}" Grid.Row="1" />
-                            <TextBox Grid.Row="1" Grid.Column="1"
+                            <TextBox x:Name="ExcludePathsBox" Grid.Row="1" Grid.Column="1"
                                      Text="{x:Bind ViewModel.ExcludePaths, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                     PlaceholderText="bin|obj|node_modules|*.tmp" FontSize="12" />
+                                     PlaceholderText="bin|obj|node_modules|*.tmp"
+                                     DoubleTapped="OnExcludePathsDoubleTapped"
+                                     FontSize="12" />
                             <Button Grid.Row="1" Grid.Column="2" Style="{StaticResource RecentsButton}" Click="OnExcludePathsRecentsClicked">
                                 <FontIcon Glyph="&#xE823;" FontSize="12" />
                             </Button>
@@ -427,7 +437,40 @@
                                ResizeBehavior="PreviousAndNext" ResizeDirection="Rows" />
 
         <!-- Results -->
-        <Border Grid.Row="3" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="4" Margin="6,0,6,6">
+        <!-- SEARCH RESULTS section header -->
+        <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="8" Margin="8,4,8,2">
+            <TextBlock Text="SEARCH RESULTS" Style="{StaticResource SectionHeader}" />
+            <Button Style="{StaticResource SmallButton}" Click="OnExpandAllClicked" Margin="0,4,0,0"
+                    ToolTipService.ToolTip="Expand all">
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                    <FontIcon Glyph="&#xE710;" FontSize="10" />
+                    <TextBlock Text="Expand all" />
+                </StackPanel>
+            </Button>
+            <Button Style="{StaticResource SmallButton}" Click="OnCollapseAllClicked" Margin="0,4,0,0"
+                    ToolTipService.ToolTip="Collapse all">
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                    <FontIcon Glyph="&#xE738;" FontSize="10" />
+                    <TextBlock Text="Collapse all" />
+                </StackPanel>
+            </Button>
+            <Button Style="{StaticResource SmallButton}" Click="OnExportToCsv" Margin="0,4,0,0"
+                    ToolTipService.ToolTip="Save all results as a CSV file">
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                    <FontIcon Glyph="&#xE74E;" FontSize="10" />
+                    <TextBlock Text="Export to CSV" />
+                </StackPanel>
+            </Button>
+            <Button Style="{StaticResource SmallButton}" Click="OnOpenInExcel" Margin="0,4,0,0"
+                    ToolTipService.ToolTip="Open all results in the default app for CSV (typically Excel)">
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                    <FontIcon Glyph="&#xE8A7;" FontSize="10" />
+                    <TextBlock Text="Open in Excel" />
+                </StackPanel>
+            </Button>
+        </StackPanel>
+
+        <Border Grid.Row="4" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="4" Margin="6,0,6,6">
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
@@ -476,19 +519,23 @@
                 <ListView x:Name="ResultsList" Grid.Row="1"
                           ItemsSource="{x:Bind ViewModel.Results, Mode=OneWay}"
                           SelectionMode="Extended">
-                    <ListView.KeyboardAccelerators>
-                        <KeyboardAccelerator Key="C" Modifiers="Control" Invoked="OnCopyAccelerator" />
-                    </ListView.KeyboardAccelerators>
                     <ListView.ContextFlyout>
                         <MenuFlyout>
-                            <MenuFlyoutItem Text="Expand all" Click="OnExpandAllClicked" />
-                            <MenuFlyoutItem Text="Collapse all" Click="OnCollapseAllClicked" />
+                            <MenuFlyoutItem Text="Open with editor" Click="OnOpenWithEditor">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon Glyph="&#xE70F;" />
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                            <MenuFlyoutItem Text="Open containing folder" Click="OnOpenContainingFolder">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon Glyph="&#xE838;" />
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
                             <MenuFlyoutSeparator />
-                            <MenuFlyoutItem Text="Copy name(s)" Click="OnCopyName" />
-                            <MenuFlyoutItem Text="Copy full path(s)" Click="OnCopyFullPath" />
-                            <MenuFlyoutItem Text="Copy line(s)" Click="OnCopyLine" />
-                            <MenuFlyoutSeparator />
-                            <MenuFlyoutItem Text="Copy as CSV  (Ctrl+C)" Click="OnCopyCsv" />
+                            <MenuFlyoutItem Text="Copy path(s) to clipboard" Click="OnCopyFullPath" />
+                            <MenuFlyoutItem Text="Copy filename(s) to clipboard" Click="OnCopyName" />
+                            <MenuFlyoutItem Text="Copy line(s) to clipboard" Click="OnCopyLine" />
+                            <MenuFlyoutItem Text="Copy as CSV" Click="OnCopyCsv" />
                         </MenuFlyout>
                     </ListView.ContextFlyout>
                     <ListView.ItemContainerStyle>

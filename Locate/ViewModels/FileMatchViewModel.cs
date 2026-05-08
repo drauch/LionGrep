@@ -25,15 +25,18 @@ public partial class FileMatchViewModel : ObservableObject
 {
     private readonly FileMatch _model;
 
-    public FileMatchViewModel(MainViewModel parent, FileMatch model, int insertionIndex)
+    public FileMatchViewModel(MainViewModel parent, FileMatch model, int insertionIndex, string? displayDirectory = null)
     {
         Parent = parent;
         _model = model;
         InsertionIndex = insertionIndex;
+        _displayDirectory = displayDirectory;
         Lines = new ObservableCollection<LineMatchViewModel>(
             model.ContentMatches.Select(m => new LineMatchViewModel(model.Path, m)));
         FileNameSegments = ComputeFileNameSegments(model);
     }
+
+    private readonly string? _displayDirectory;
 
     public MainViewModel Parent { get; }
     public int InsertionIndex { get; }
@@ -58,7 +61,7 @@ public partial class FileMatchViewModel : ObservableObject
 
     public string Path => _model.Path;
     public string FileName => System.IO.Path.GetFileName(_model.Path);
-    public string Directory => System.IO.Path.GetDirectoryName(_model.Path) ?? "";
+    public string Directory => _displayDirectory ?? System.IO.Path.GetDirectoryName(_model.Path) ?? "";
     public string Extension => System.IO.Path.GetExtension(_model.Path);
     public string EncodingName => _model.Encoding switch
     {

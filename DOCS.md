@@ -144,6 +144,10 @@ Columns left-to-right: **Name, Size, Matches, Path, Ext, Encoding, Date modified
 
 When **Search in file & sub directory names** is on and a file is in the results because of a **name** match, the matched portion of the file name in the **Name** column is highlighted with a yellow background. If a file appears for name reasons only (no content matches), the row's chevron is hidden — there's nothing to expand. Files with content matches show the chevron normally; if their name also matched, the highlight shows there too.
 
+**Path column** — when **Search in** has exactly one root, paths are shown relative to that root (so you see `src/Locate` rather than `C:\Projects\2026Projects\Locate\src\Locate`). When you have multiple search roots, the column shows the full directory path so the result is unambiguous.
+
+**Encoding column** — shows `—` (em-dash) when the file is in the results because of a name match only and was never opened. When the file's content was scanned, this column shows `UTF-8`, `UTF-8 BOM`, `UTF-16 LE`, `UTF-16 BE`, `UTF-32 LE`, or `UTF-32 BE` per BOM detection (no BOM falls back to `UTF-8`).
+
 - **Drag** the thin gap between two columns to resize them. The east-west cursor confirms you've grabbed the handle.
 - **Click** any column header to cycle sort: **None → Ascending → Descending → None**. The active column shows `▲` or `▼`. When the primary sort is **Path**, the secondary sort is always **Name** so siblings within a directory appear alphabetically.
 - The first search of each session sorts results by **Path → Name** ascending. Subsequent searches respect whichever sort you've chosen (sticky across searches).
@@ -156,17 +160,30 @@ When the window narrows, columns are hidden in this priority order (most aggress
 
 Multi-select via Ctrl/Shift-click as in any ListView. Right-click for the context menu:
 
-- **Expand all** / **Collapse all**
-- **Copy name(s)** — file names of the selected (or all) results.
-- **Copy full path(s)** — full paths.
-- **Copy line(s)** — the matched line text(s), one per line.
+- **Open with editor** — runs the configured editor command for each selected file.
+- **Open containing folder** — opens Explorer with each selected file pre-selected (`/select,...`).
+- **Copy path(s) to clipboard**
+- **Copy filename(s) to clipboard**
+- **Copy line(s) to clipboard** — the matched line text(s).
 - **Copy as CSV** — `Name,Path,Line,Column,Text`, one row per match. RFC-4180 quoting (values containing commas, quotes, CR, or LF are wrapped in `"…"` with internal `"` doubled).
 
-**Ctrl+C** is bound to **Copy as CSV** by default.
+Ctrl+C is **not** bound by default — use the right-click menu (or Export buttons in the SEARCH RESULTS header) to copy/export.
 
-### 7.4 Edit on double-click
+### 7.4 SEARCH RESULTS section header
 
-Double-click any line entry to open the configured external editor at that file/line/column. Configure the editor command in **Settings**; placeholders `%path%`, `%line%`, `%column%` are substituted in.
+Above the results table, a section header shows action buttons:
+
+- **Expand all** / **Collapse all** — toggles every result row's matched-line view.
+- **Export to CSV** — opens a Save As dialog and writes all results as a UTF-8 (BOM-prefixed) CSV file.
+- **Open in Excel** — writes a temp CSV and shells it open with the default app for `.csv` (Excel if installed). The file lives in your `%TEMP%` directory.
+
+### 7.5 Open files (double-click)
+
+- **Single row** — double-click opens that file in the configured editor at the first match's line/column.
+- **Multiple rows selected** — double-click prompts a confirmation dialog (`Open N files?`) before launching N editor instances. Cancel to abort.
+- **Line entry inside an expanded row** — double-click opens at that exact line.
+
+Configure the editor command in **Settings**; placeholders `%path%`, `%line%`, `%column%` are substituted.
 
 ---
 
@@ -213,9 +230,11 @@ All settings persist under `HKCU\Software\Locate`.
 |---|---|
 | **Ctrl+Enter** | Run search |
 | **Ctrl+Alt+Enter** | Run replace (with confirmation unless suppressed) |
-| **Ctrl+C** (in results) | Copy selected results as CSV |
+| **Escape** | Cancel the running search; if no search is running, restore the form panel from a collapsed state |
 | **Enter** | Default action for the focused control (newline in multi-line Search-in, etc.) |
 | **F2** etc. | Whatever you've assigned to a preset |
+| **Double-click on input field** | Show recents dropdown for that field |
+| **Double-click on result row** | Open file in editor (multi-select prompts a confirmation first) |
 
 ---
 

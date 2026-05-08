@@ -178,6 +178,14 @@ public partial class MainViewModel : ObservableObject
             return;
         }
 
+        // When there's exactly one search root, display each file's directory relative to it.
+        string? singleRoot = null;
+        if (roots.Count == 1)
+        {
+            try { singleRoot = System.IO.Path.GetFullPath(roots[0]); }
+            catch { singleRoot = null; }
+        }
+
         OperationStarted?.Invoke(this, EventArgs.Empty);
         IsSearching = true;
         Results.Clear();
@@ -210,7 +218,17 @@ public partial class MainViewModel : ObservableObject
                     ct.ThrowIfCancellationRequested();
                     var insertion = (int)Interlocked.Increment(ref _matchedCounter) - 1;
                     Interlocked.Add(ref _matchCounter, match.ContentMatches.Count + match.NameMatches.Count);
-                    _pendingResults.Enqueue(new FileMatchViewModel(this, match, insertion));
+                    string? displayDir = null;
+                    if (singleRoot is not null)
+                    {
+                        try
+                        {
+                            var rel = System.IO.Path.GetRelativePath(singleRoot, match.Path);
+                            displayDir = System.IO.Path.GetDirectoryName(rel) ?? "";
+                        }
+                        catch { displayDir = null; }
+                    }
+                    _pendingResults.Enqueue(new FileMatchViewModel(this, match, insertion, displayDir));
                 }
             }, ct);
             StopSummaryTimer();
