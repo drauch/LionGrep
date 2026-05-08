@@ -34,6 +34,7 @@ public sealed partial class MainWindow : Window
     private SortDirection _sortDirection;
     private bool _initialDefaultSortApplied;
     private bool _initialFormFitDone;
+    private double _cachedFormHeight;
     private enum SortDirection { None, Ascending, Descending }
 
     public MainWindow()
@@ -84,13 +85,13 @@ public sealed partial class MainWindow : Window
     private void FitFormRow()
     {
         if (_initialFormFitDone) return;
-        // Force a measure pass so DesiredSize reflects the natural content height.
         var width = FormStackPanel.ActualWidth > 0 ? FormStackPanel.ActualWidth : 1100;
         FormStackPanel.Measure(new Windows.Foundation.Size(width, double.PositiveInfinity));
         var height = FormStackPanel.DesiredSize.Height;
         if (height <= 0) return;
         _initialFormFitDone = true;
-        FormRow.Height = new GridLength(height + 56);
+        _cachedFormHeight = height + 56;
+        FormRow.Height = new GridLength(_cachedFormHeight);
     }
 
     private void OnSearchCompleted()
@@ -233,35 +234,45 @@ public sealed partial class MainWindow : Window
     private void OnExcludePathsRecentsClicked(object sender, RoutedEventArgs e) =>
         ShowRecentsFlyout(ExcludePathsBox, MainViewModel.RecentsKeyExcludePaths, v => ViewModel.ExcludePaths = v);
 
-    private void OnSearchInDoubleTapped(object sender, DoubleTappedRoutedEventArgs e) =>
-        ShowRecentsFlyout(SearchInBox, MainViewModel.RecentsKeySearchIn, v => ViewModel.SearchIn = v);
-    private void OnSearchPatternDoubleTapped(object sender, DoubleTappedRoutedEventArgs e) =>
-        ShowRecentsFlyout(SearchPatternBox, MainViewModel.RecentsKeySearchPattern, v => ViewModel.SearchPattern = v);
-    private void OnReplacePatternDoubleTapped(object sender, DoubleTappedRoutedEventArgs e) =>
-        ShowRecentsFlyout(ReplacePatternBox, MainViewModel.RecentsKeyReplacePattern, v => ViewModel.ReplacePattern = v);
-    private void OnFileNamesDoubleTapped(object sender, DoubleTappedRoutedEventArgs e) =>
-        ShowRecentsFlyout(FileNamesBox, MainViewModel.RecentsKeyFileNames, v => ViewModel.FileNames = v);
-    private void OnExcludePathsDoubleTapped(object sender, DoubleTappedRoutedEventArgs e) =>
-        ShowRecentsFlyout(ExcludePathsBox, MainViewModel.RecentsKeyExcludePaths, v => ViewModel.ExcludePaths = v);
-
     private void ShowRecentsFlyout(FrameworkElement anchor, string fieldKey, Action<string> apply)
     {
-        var items = _recentsStore.Get(fieldKey);
-        var flyout = new MenuFlyout();
+        var items = _recentsStore.Get(fieldKey).Take(10).ToList();
+        var listView = new ListView
+        {
+            SelectionMode = ListViewSelectionMode.None,
+            IsItemClickEnabled = true,
+            MinWidth = anchor.ActualWidth,
+            MaxHeight = 320,
+            FontSize = 12,
+        };
+        var itemStyle = new Style(typeof(ListViewItem));
+        itemStyle.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(8, 2, 8, 2)));
+        itemStyle.Setters.Add(new Setter(FrameworkElement.MinHeightProperty, 0d));
+        listView.ItemContainerStyle = itemStyle;
+
         if (items.Count == 0)
         {
-            flyout.Items.Add(new MenuFlyoutItem { Text = "(no recent values)", IsEnabled = false });
+            listView.IsItemClickEnabled = false;
+            listView.Items.Add(new TextBlock { Text = "(no recent values)", FontSize = 12, Opacity = 0.6, Padding = new Thickness(8, 4, 8, 4) });
         }
         else
         {
-            foreach (var item in items)
-            {
-                var captured = item;
-                var fi = new MenuFlyoutItem { Text = TruncateForMenu(captured) };
-                fi.Click += (_, _) => apply(captured);
-                flyout.Items.Add(fi);
-            }
+            foreach (var s in items)
+                listView.Items.Add(new TextBlock { Text = s.Replace('\r', ' ').Replace('\n', ' '), FontSize = 12 });
         }
+
+        var flyout = new Flyout
+        {
+            Content = listView,
+            ShouldConstrainToRootBounds = true,
+        };
+        listView.ItemClick += (_, e) =>
+        {
+            var idx = listView.Items.IndexOf(e.ClickedItem);
+            if (idx >= 0 && idx < items.Count)
+                apply(items[idx]);
+            flyout.Hide();
+        };
         flyout.ShowAt(anchor, new FlyoutShowOptions { Placement = FlyoutPlacementMode.Bottom });
     }
 
@@ -295,10 +306,17 @@ public sealed partial class MainWindow : Window
     private async void OnExpandAllClicked(object sender, RoutedEventArgs e) => await ViewModel.ExpandAllAsync(true);
     private async void OnCollapseAllClicked(object sender, RoutedEventArgs e) => await ViewModel.ExpandAllAsync(false);
 
-    private void OnOpenWithEditor(object sender, RoutedEventArgs e)
+    private async void OnOpenWithEditor(object sender, RoutedEventArgs e)
     {
+        var selected = SelectedFiles();
+        if (selected.Count == 0) return;
+        if (selected.Count > 5)
+        {
+            if (!await ConfirmBulkAsync($"Open {selected.Count:N0} files in editor?",
+                $"This will launch {selected.Count:N0} editor windows.")) return;
+        }
         var settings = _settingsStore.Load();
-        foreach (var f in SelectedFiles().Take(20))
+        foreach (var f in selected)
             OpenFileInEditor(f, settings.EditorCommand);
     }
 
@@ -316,26 +334,70 @@ public sealed partial class MainWindow : Window
     private async void OnOpenInExcel(object sender, RoutedEventArgs e)
     {
         var temp = System.IO.Path.Combine(System.IO.Path.GetTempPath(),
-            $"locate-{DateTime.Now:yyyyMMdd-HHmmss}.csv");
-        await File.WriteAllTextAsync(temp, BuildCsv(ViewModel.Results.ToList()),
-            new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
+            $"locate-{DateTime.Now:yyyyMMdd-HHmmss}.xlsx");
         try
         {
+            WriteXlsx(temp, ViewModel.Results.ToList());
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
             {
                 FileName = temp,
                 UseShellExecute = true,
             });
+            await Task.CompletedTask;
         }
         catch (Exception ex)
         {
-            ShowError("Could not open in default app", ex.Message);
+            ShowError("Could not open in Excel", ex.Message);
         }
     }
 
-    private void OnOpenContainingFolder(object sender, RoutedEventArgs e)
+    private static void WriteXlsx(string path, IReadOnlyList<FileMatchViewModel> files)
     {
-        foreach (var f in SelectedFiles().Take(10))
+        using var wb = new ClosedXML.Excel.XLWorkbook();
+        var ws = wb.Worksheets.Add("Locate results");
+        ws.Cell(1, 1).Value = "Name";
+        ws.Cell(1, 2).Value = "Path";
+        ws.Cell(1, 3).Value = "Line";
+        ws.Cell(1, 4).Value = "Column";
+        ws.Cell(1, 5).Value = "Text";
+        var header = ws.Range(1, 1, 1, 5);
+        header.Style.Font.Bold = true;
+        header.Style.Fill.BackgroundColor = ClosedXML.Excel.XLColor.FromArgb(0xEE, 0xEE, 0xEE);
+
+        var row = 2;
+        foreach (var f in files)
+        {
+            if (f.Lines.Count == 0)
+            {
+                ws.Cell(row, 1).Value = f.FileName;
+                ws.Cell(row, 2).Value = f.Path;
+                row++;
+                continue;
+            }
+            foreach (var l in f.Lines)
+            {
+                ws.Cell(row, 1).Value = f.FileName;
+                ws.Cell(row, 2).Value = f.Path;
+                ws.Cell(row, 3).Value = l.LineNumber;
+                ws.Cell(row, 4).Value = l.Column + 1;
+                ws.Cell(row, 5).Value = l.LineText;
+                row++;
+            }
+        }
+        ws.Columns(1, 5).AdjustToContents(1, Math.Min(row - 1, 200));
+        wb.SaveAs(path);
+    }
+
+    private async void OnOpenContainingFolder(object sender, RoutedEventArgs e)
+    {
+        var selected = SelectedFiles();
+        if (selected.Count == 0) return;
+        if (selected.Count > 5)
+        {
+            if (!await ConfirmBulkAsync($"Open {selected.Count:N0} folders?",
+                $"This will launch {selected.Count:N0} Explorer windows.")) return;
+        }
+        foreach (var f in selected)
         {
             try
             {
@@ -343,6 +405,20 @@ public sealed partial class MainWindow : Window
             }
             catch { /* ignore */ }
         }
+    }
+
+    private async Task<bool> ConfirmBulkAsync(string title, string content)
+    {
+        var dialog = new ContentDialog
+        {
+            XamlRoot = Content.XamlRoot,
+            Title = title,
+            Content = content,
+            PrimaryButtonText = "Continue",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Close,
+        };
+        return await dialog.ShowAsync() == ContentDialogResult.Primary;
     }
 
     private void OnLineDoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
@@ -385,11 +461,13 @@ public sealed partial class MainWindow : Window
 
     private void OpenFileInEditor(FileMatchViewModel file, string editorCommand)
     {
+        string? error;
         var first = file.Lines.FirstOrDefault();
-        if (first is not null)
-            _editorLauncher.TryLaunch(editorCommand, first.FilePath, first.LineNumber, first.Column + 1, out _);
-        else
-            _editorLauncher.TryLaunch(editorCommand, file.Path, 1, 1, out _);
+        var ok = first is not null
+            ? _editorLauncher.TryLaunch(editorCommand, first.FilePath, first.LineNumber, first.Column + 1, out error)
+            : _editorLauncher.TryLaunch(editorCommand, file.Path, 1, 1, out error);
+        if (!ok)
+            ShowError("Could not launch editor", error ?? "Unknown error.");
     }
 
     private void LaunchEditor(string path, int line, int column)
@@ -568,13 +646,15 @@ public sealed partial class MainWindow : Window
         args.Handled = true;
         if (ViewModel.IsSearching)
             ViewModel.CancelSearchCommand.Execute(null);
-        else
-            RestoreFormRow();
+        RestoreFormRow();
     }
 
     private void RestoreFormRow()
     {
-        if (FormStackPanel.ActualHeight > 0)
+        // Idempotent: always set to the cached natural form height. Multiple presses don't grow it.
+        if (_cachedFormHeight > 0)
+            FormRow.Height = new GridLength(_cachedFormHeight);
+        else if (FormStackPanel.ActualHeight > 0)
             FormRow.Height = new GridLength(FormStackPanel.ActualHeight + 56);
         else
             FormRow.Height = new GridLength(1, GridUnitType.Star);

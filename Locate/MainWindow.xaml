@@ -229,7 +229,6 @@
                         <TextBox x:Name="SearchPatternBox" Grid.Row="0" Grid.Column="1"
                                  Text="{x:Bind ViewModel.SearchPattern, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                  PlaceholderText="Pattern (text or regex)"
-                                 DoubleTapped="OnSearchPatternDoubleTapped"
                                  FontSize="12" />
                         <Button Grid.Row="0" Grid.Column="2" Style="{StaticResource RecentsButton}" Click="OnSearchPatternRecentsClicked">
                             <FontIcon Glyph="&#xE823;" FontSize="12" />
@@ -239,7 +238,6 @@
                         <TextBox x:Name="ReplacePatternBox" Grid.Row="1" Grid.Column="1"
                                  Text="{x:Bind ViewModel.ReplacePattern, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                  PlaceholderText="Replacement (literal or $1 backrefs)"
-                                 DoubleTapped="OnReplacePatternDoubleTapped"
                                  FontSize="12" />
                         <Button Grid.Row="1" Grid.Column="2" Style="{StaticResource RecentsButton}" Click="OnReplacePatternRecentsClicked">
                             <FontIcon Glyph="&#xE823;" FontSize="12" />
@@ -299,7 +297,6 @@
                             <TextBox x:Name="FileNamesBox" Grid.Row="0" Grid.Column="1"
                                      Text="{x:Bind ViewModel.FileNames, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                      PlaceholderText="*.cs|*.ts|!*.Generated.cs"
-                                     DoubleTapped="OnFileNamesDoubleTapped"
                                      FontSize="12" />
                             <Button Grid.Row="0" Grid.Column="2" Style="{StaticResource RecentsButton}" Click="OnFileNamesRecentsClicked">
                                 <FontIcon Glyph="&#xE823;" FontSize="12" />
@@ -311,7 +308,6 @@
                             <TextBox x:Name="ExcludePathsBox" Grid.Row="1" Grid.Column="1"
                                      Text="{x:Bind ViewModel.ExcludePaths, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                      PlaceholderText="bin|obj|node_modules|*.tmp"
-                                     DoubleTapped="OnExcludePathsDoubleTapped"
                                      FontSize="12" />
                             <Button Grid.Row="1" Grid.Column="2" Style="{StaticResource RecentsButton}" Click="OnExcludePathsRecentsClicked">
                                 <FontIcon Glyph="&#xE823;" FontSize="12" />

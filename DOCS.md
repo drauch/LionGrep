@@ -158,10 +158,10 @@ When the window narrows, columns are hidden in this priority order (most aggress
 
 ### 7.3 Selection and copy
 
-Multi-select via Ctrl/Shift-click as in any ListView. Right-click for the context menu:
+Multi-select via Ctrl/Shift-click as in any ListView. Right-click on a row that isn't part of the current selection narrows the selection to just that row before opening the context menu (so you don't accidentally act on the entire list).
 
-- **Open with editor** — runs the configured editor command for each selected file.
-- **Open containing folder** — opens Explorer with each selected file pre-selected (`/select,...`).
+- **Open with editor** — runs the configured editor command for each selected file. If no editor is configured (or the launch fails), an error dialog appears. Opening more than 5 files prompts a confirmation first.
+- **Open containing folder** — opens Explorer with each selected file pre-selected (`/select,...`). Same 5-file confirmation guard.
 - **Copy path(s) to clipboard**
 - **Copy filename(s) to clipboard**
 - **Copy line(s) to clipboard** — the matched line text(s).
@@ -175,7 +175,7 @@ Above the results table, a section header shows action buttons:
 
 - **Expand all** / **Collapse all** — toggles every result row's matched-line view.
 - **Export to CSV** — opens a Save As dialog and writes all results as a UTF-8 (BOM-prefixed) CSV file.
-- **Open in Excel** — writes a temp CSV and shells it open with the default app for `.csv` (Excel if installed). The file lives in your `%TEMP%` directory.
+- **Open in Excel** — writes a real `.xlsx` workbook (via ClosedXML) to `%TEMP%` and shells it open with the default `.xlsx` handler. The header row is bold with a light-grey background; columns auto-fit to the first 200 rows.
 
 ### 7.5 Open files (double-click)
 
@@ -228,13 +228,14 @@ All settings persist under `HKCU\Software\Locate`.
 
 | Hotkey | Action |
 |---|---|
-| **Ctrl+Enter** | Run search |
+| **Ctrl+Enter** | Run search (works even when focus is in a multi-line input) |
 | **Ctrl+Alt+Enter** | Run replace (with confirmation unless suppressed) |
-| **Escape** | Cancel the running search; if no search is running, restore the form panel from a collapsed state |
+| **Escape** | Cancel the running search **and** restore the form panel. Pressing Escape repeatedly is idempotent — the form returns to the same cached natural height each time. |
 | **Enter** | Default action for the focused control (newline in multi-line Search-in, etc.) |
 | **F2** etc. | Whatever you've assigned to a preset |
-| **Double-click on input field** | Show recents dropdown for that field |
+| **Double-click on input field** | Show recents dropdown for that field, sized to the input's width |
 | **Double-click on result row** | Open file in editor (multi-select prompts a confirmation first) |
+| **Right-click on result row** | Selects the right-clicked row if it isn't already in the selection, then opens the context menu |
 
 ---
 
