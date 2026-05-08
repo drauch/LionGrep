@@ -32,6 +32,8 @@ public sealed partial class MainWindow : Window
 
     private string? _sortColumn;
     private SortDirection _sortDirection;
+    private bool _initialDefaultSortApplied;
+    private bool _initialFormFitDone;
     private enum SortDirection { None, Ascending, Descending }
 
     public MainWindow()
@@ -49,11 +51,13 @@ public sealed partial class MainWindow : Window
         NativeMethods.SetWindowSubclass(_windowHandle, _subclassProc, 1, 0);
 
         ViewModel.OperationStarted += (_, _) => CollapseFormRow();
+        ViewModel.SearchCompleted += (_, _) => OnSearchCompleted();
 
         Activated += OnFirstActivated;
         if (Content is FrameworkElement root)
             root.SizeChanged += OnRootSizeChanged;
 
+        FormStackPanel.SizeChanged += OnFormStackPanelSizeChanged;
         RegisterPresetHotkeys();
     }
 
@@ -62,6 +66,32 @@ public sealed partial class MainWindow : Window
         Activated -= OnFirstActivated;
         if (Content is FrameworkElement root)
             ApplyBreakpointFor(root.ActualWidth);
+        SearchSplit.Focus(FocusState.Programmatic);
+    }
+
+    private void OnFormStackPanelSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (_initialFormFitDone) return;
+        if (e.NewSize.Height <= 0) return;
+        _initialFormFitDone = true;
+        FormStackPanel.SizeChanged -= OnFormStackPanelSizeChanged;
+        // Pixel-size the row to the form's natural content height plus a little breathing room for action bar + padding.
+        FormRow.Height = new GridLength(e.NewSize.Height + 56);
+    }
+
+    private void OnSearchCompleted()
+    {
+        if (!_initialDefaultSortApplied)
+        {
+            _initialDefaultSortApplied = true;
+            if (_sortColumn is null)
+            {
+                _sortColumn = "Path";
+                _sortDirection = SortDirection.Ascending;
+            }
+        }
+        ApplySort();
+        UpdateHeaderTexts();
     }
 
     private void OnRootSizeChanged(object sender, SizeChangedEventArgs e)
@@ -425,17 +455,15 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    // ---- Enter / Ctrl+Enter ----
-    private void OnEnterAccelerator(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    // ---- Hotkeys: Ctrl+Enter = Search, Ctrl+Alt+Enter = Replace ----
+    private void OnCtrlEnterAccelerator(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
     {
-        // If the focus is in the multi-line SearchInBox, let the TextBox keep Enter for newline insertion.
-        if (ReferenceEquals(FocusManager.GetFocusedElement(Content.XamlRoot), SearchInBox)) return;
         args.Handled = true;
         if (ViewModel.SearchCommand.CanExecute(null))
             ViewModel.SearchCommand.Execute(null);
     }
 
-    private async void OnCtrlEnterAccelerator(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    private async void OnCtrlAltEnterAccelerator(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
     {
         args.Handled = true;
         await ConfirmAndReplaceAsync();
@@ -506,7 +534,7 @@ public sealed partial class MainWindow : Window
 
     private void ApplySort()
     {
-        IEnumerable<FileMatchViewModel> sorted = _sortColumn switch
+        IOrderedEnumerable<FileMatchViewModel> ordered = _sortColumn switch
         {
             "Name" => OrderBy(x => x.FileName),
             "Size" => OrderBy(x => x.FileLength),
@@ -517,7 +545,14 @@ public sealed partial class MainWindow : Window
             "Date" => OrderBy(x => x.FileLastWriteTime),
             _ => ViewModel.Results.OrderBy(x => x.InsertionIndex),
         };
-        var arr = sorted.ToList();
+        // Always apply Name as secondary when primary is Path, so siblings sort alphabetically.
+        if (_sortColumn == "Path")
+        {
+            ordered = _sortDirection == SortDirection.Descending
+                ? ordered.ThenByDescending(x => x.FileName)
+                : ordered.ThenBy(x => x.FileName);
+        }
+        var arr = ordered.ToList();
         ViewModel.Results.Clear();
         foreach (var r in arr) ViewModel.Results.Add(r);
     }

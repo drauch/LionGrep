@@ -69,9 +69,9 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private bool _excludePathsRegex;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(SizeValueEnabled))]
+    [NotifyPropertyChangedFor(nameof(SizeValueVisibility))]
     [NotifyPropertyChangedFor(nameof(SizeUpperVisibility))]
-    private int _sizeModeIndex;
+    private int _sizeModeIndex = 1;  // Default to "Less than" so a size box is shown.
 
     [ObservableProperty] private double _sizeKb = 256;
     [ObservableProperty] private double _sizeKbUpper = 1024;
@@ -96,7 +96,7 @@ public partial class MainViewModel : ObservableObject
     public double SearchInBoxHeight => IsSearchInExpanded ? 80 : 28;
 
     public bool IsDotMatchesNewlineEnabled => UseRegex;
-    public bool SizeValueEnabled => SizeModeIndex > 0;
+    public Visibility SizeValueVisibility => SizeModeIndex == 0 ? Visibility.Collapsed : Visibility.Visible;
     public Visibility SizeUpperVisibility => SizeModeIndex == 3 ? Visibility.Visible : Visibility.Collapsed;
     public Visibility DateFromVisibility => DateModeIndex == 0 ? Visibility.Collapsed : Visibility.Visible;
     public Visibility DateToVisibility => DateModeIndex == 4 ? Visibility.Visible : Visibility.Collapsed;
@@ -113,6 +113,7 @@ public partial class MainViewModel : ObservableObject
     // ---- Status / counts ----
     [ObservableProperty] private string _resultsSummary = "No search run yet.";
     [ObservableProperty] private int _examinedCount;
+    [ObservableProperty] private int _rejectedCount;
     [ObservableProperty] private int _matchedFileCount;
     [ObservableProperty] private int _matchCount;
 
@@ -145,6 +146,9 @@ public partial class MainViewModel : ObservableObject
     /// <summary>Raised when a search or replace operation starts so the host window can collapse the form row.</summary>
     public event EventHandler? OperationStarted;
 
+    /// <summary>Raised when a search finishes (success or cancel) so the host window can apply default sort.</summary>
+    public event EventHandler? SearchCompleted;
+
     // ---- Commands ----
     [RelayCommand(CanExecute = nameof(CanSearch))]
     private async Task SearchAsync()
@@ -169,15 +173,21 @@ public partial class MainViewModel : ObservableObject
         IsSearching = true;
         Results.Clear();
         ExaminedCount = 0;
+        RejectedCount = 0;
         MatchedFileCount = 0;
         MatchCount = 0;
         _searchCts = new CancellationTokenSource();
         var ct = _searchCts.Token;
 
         var request = BuildRequest(roots);
-        var progress = new Progress<int>(c => _dispatcher.TryEnqueue(() =>
+        var examinedProgress = new Progress<int>(c => _dispatcher.TryEnqueue(() =>
         {
             ExaminedCount = c;
+            UpdateRunningSummary();
+        }));
+        var rejectedProgress = new Progress<int>(c => _dispatcher.TryEnqueue(() =>
+        {
+            RejectedCount = c;
             UpdateRunningSummary();
         }));
 
@@ -185,7 +195,7 @@ public partial class MainViewModel : ObservableObject
         {
             await Task.Run(() =>
             {
-                foreach (var match in _searcher.Search(request, progress, ct))
+                foreach (var match in _searcher.Search(request, examinedProgress, rejectedProgress, ct))
                 {
                     ct.ThrowIfCancellationRequested();
                     var insertion = MatchedFileCount;
@@ -201,12 +211,12 @@ public partial class MainViewModel : ObservableObject
                     });
                 }
             }, ct);
-            ResultsSummary = $"{MatchedFileCount:N0} files, {MatchCount:N0} matches, {Math.Max(0, ExaminedCount - MatchedFileCount):N0} skipped.";
+            ResultsSummary = $"{MatchedFileCount:N0} files, {MatchCount:N0} matches, {RejectedCount:N0} skipped.";
             SaveRecents();
         }
         catch (OperationCanceledException)
         {
-            ResultsSummary = $"Cancelled. {MatchedFileCount:N0} files, {MatchCount:N0} matches, {Math.Max(0, ExaminedCount - MatchedFileCount):N0} skipped.";
+            ResultsSummary = $"Cancelled. {MatchedFileCount:N0} files, {MatchCount:N0} matches, {RejectedCount:N0} skipped.";
         }
         catch (Exception ex)
         {
@@ -216,11 +226,12 @@ public partial class MainViewModel : ObservableObject
         {
             IsSearching = false;
             _searchCts = null;
+            SearchCompleted?.Invoke(this, EventArgs.Empty);
         }
     }
 
     private void UpdateRunningSummary() =>
-        ResultsSummary = $"{MatchedFileCount:N0} files, {MatchCount:N0} matches, {Math.Max(0, ExaminedCount - MatchedFileCount):N0} skipped (running)";
+        ResultsSummary = $"{MatchedFileCount:N0} files, {MatchCount:N0} matches, {RejectedCount:N0} skipped (running)";
 
     private bool CanSearch() => !IsSearching && !IsReplacing;
 

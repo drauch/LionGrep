@@ -10,6 +10,11 @@ public sealed class FileEnumerator
 {
     public IEnumerable<EnumeratedFile> Enumerate(IReadOnlyList<string> roots, FileEnumerationOptions options, CancellationToken ct = default)
     {
+        return Enumerate(roots, options, onFileRejected: null, ct);
+    }
+
+    public IEnumerable<EnumeratedFile> Enumerate(IReadOnlyList<string> roots, FileEnumerationOptions options, IProgress<int>? onFileRejected, CancellationToken ct = default)
+    {
         ArgumentNullException.ThrowIfNull(roots);
         ArgumentNullException.ThrowIfNull(options);
 
@@ -23,6 +28,8 @@ public sealed class FileEnumerator
             AttributesToSkip = ComputeAttributesToSkip(options),
             ReturnSpecialDirectories = false,
         };
+
+        var rejected = 0;
 
         foreach (var root in roots)
         {
@@ -43,17 +50,15 @@ public sealed class FileEnumerator
                         return false;
 
                     var relative = ToRelative(rootFull, entry.ToFullPath());
-                    if (pathExclude is not null && pathExclude(relative))
+                    if ((pathExclude is not null && pathExclude(relative))
+                        || !fileFilter(relative)
+                        || (options.Size is { } size && !PassesSize(entry.Length, size))
+                        || (options.Date is { } date && !PassesDate(entry.LastWriteTimeUtc.DateTime, date)))
+                    {
+                        rejected++;
+                        onFileRejected?.Report(rejected);
                         return false;
-                    if (!fileFilter(relative))
-                        return false;
-
-                    if (options.Size is { } size && !PassesSize(entry.Length, size))
-                        return false;
-
-                    if (options.Date is { } date && !PassesDate(entry.LastWriteTimeUtc.DateTime, date))
-                        return false;
-
+                    }
                     return true;
                 },
                 ShouldRecursePredicate = pathExclude is null

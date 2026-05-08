@@ -16,8 +16,8 @@
 
     <Grid x:Name="RootGrid">
         <Grid.KeyboardAccelerators>
-            <KeyboardAccelerator Key="Enter" Invoked="OnEnterAccelerator" />
             <KeyboardAccelerator Key="Enter" Modifiers="Control" Invoked="OnCtrlEnterAccelerator" />
+            <KeyboardAccelerator Key="Enter" Modifiers="Control,Menu" Invoked="OnCtrlAltEnterAccelerator" />
         </Grid.KeyboardAccelerators>
         <Grid.RowDefinitions>
             <RowDefinition Height="32" />
@@ -165,7 +165,7 @@
             </Grid.RowDefinitions>
 
             <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto" Padding="6,2,6,2">
-                <StackPanel Spacing="2">
+                <StackPanel x:Name="FormStackPanel" Spacing="2">
 
                     <!-- WHERE -->
                     <TextBlock Text="WHERE" Style="{StaticResource SectionHeader}" />
@@ -323,13 +323,14 @@
                                 </ComboBox>
                                 <NumberBox Value="{x:Bind ViewModel.SizeKb, Mode=TwoWay}"
                                            Minimum="0" SpinButtonPlacementMode="Compact" Width="90"
-                                           IsEnabled="{x:Bind ViewModel.SizeValueEnabled, Mode=OneWay}" />
+                                           Visibility="{x:Bind ViewModel.SizeValueVisibility, Mode=OneWay}" />
                                 <TextBlock Text="and" Style="{StaticResource FieldLabel}"
                                            Visibility="{x:Bind ViewModel.SizeUpperVisibility, Mode=OneWay}" />
                                 <NumberBox Value="{x:Bind ViewModel.SizeKbUpper, Mode=TwoWay}"
                                            Minimum="0" SpinButtonPlacementMode="Compact" Width="90"
                                            Visibility="{x:Bind ViewModel.SizeUpperVisibility, Mode=OneWay}" />
-                                <TextBlock Text="KB" Style="{StaticResource FieldLabel}" />
+                                <TextBlock Text="KB" Style="{StaticResource FieldLabel}"
+                                           Visibility="{x:Bind ViewModel.SizeValueVisibility, Mode=OneWay}" />
                             </controls:WrapPanel>
 
                             <TextBlock Text="Date:" Style="{StaticResource FieldLabel}" Grid.Row="1" />
@@ -370,7 +371,7 @@
                            HorizontalAlignment="Left" VerticalAlignment="Center"
                            Opacity="0.7" FontSize="12" />
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="4">
-                    <SplitButton Command="{x:Bind ViewModel.SearchCommand}"
+                    <SplitButton x:Name="SearchSplit" Command="{x:Bind ViewModel.SearchCommand}"
                                  Visibility="{x:Bind ViewModel.SearchButtonVisibility, Mode=OneWay}">
                         <SplitButton.Content>
                             <StackPanel Orientation="Horizontal" Spacing="4">

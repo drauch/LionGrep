@@ -12,10 +12,15 @@ public sealed class Searcher
 
     public IEnumerable<FileMatch> Search(SearchRequest request, CancellationToken ct = default)
     {
-        return Search(request, onFileExamined: null, ct);
+        return Search(request, onFileExamined: null, onFileRejected: null, ct);
     }
 
     public IEnumerable<FileMatch> Search(SearchRequest request, IProgress<int>? onFileExamined, CancellationToken ct = default)
+    {
+        return Search(request, onFileExamined, onFileRejected: null, ct);
+    }
+
+    public IEnumerable<FileMatch> Search(SearchRequest request, IProgress<int>? onFileExamined, IProgress<int>? onFileRejected, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(request);
 
@@ -23,7 +28,7 @@ public sealed class Searcher
         var hasContentPattern = !string.IsNullOrEmpty(request.Search.Pattern);
         var examined = 0;
 
-        foreach (var file in _enumerator.Enumerate(request.Roots, request.Enumeration, ct))
+        foreach (var file in _enumerator.Enumerate(request.Roots, request.Enumeration, onFileRejected, ct))
         {
             ct.ThrowIfCancellationRequested();
             examined++;
