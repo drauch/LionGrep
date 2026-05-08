@@ -63,7 +63,49 @@ public sealed partial class MainWindow : Window
         if (Content is FrameworkElement root)
             root.SizeChanged += OnRootSizeChanged;
 
+        // Catch Ctrl+Enter / Ctrl+Alt+Enter even when a TextBox has marked the KeyDown handled.
+        RootGrid.AddHandler(UIElement.KeyDownEvent,
+            new KeyEventHandler(OnRootKeyDownIntercept),
+            handledEventsToo: true);
+
+        WireInputDoubleTaps();
         RegisterPresetHotkeys();
+    }
+
+    private void OnRootKeyDownIntercept(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key != VirtualKey.Enter) return;
+        var ctrl = (Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Control)
+                    & Windows.UI.Core.CoreVirtualKeyStates.Down) != 0;
+        if (!ctrl) return;
+        var alt = (Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Menu)
+                   & Windows.UI.Core.CoreVirtualKeyStates.Down) != 0;
+        e.Handled = true;
+        if (alt)
+            _ = ConfirmAndReplaceAsync();
+        else if (ViewModel.SearchCommand.CanExecute(null))
+            ViewModel.SearchCommand.Execute(null);
+    }
+
+    private void WireInputDoubleTaps()
+    {
+        Wire(SearchInBox, MainViewModel.RecentsKeySearchIn, v => ViewModel.SearchIn = v);
+        Wire(SearchPatternBox, MainViewModel.RecentsKeySearchPattern, v => ViewModel.SearchPattern = v);
+        Wire(ReplacePatternBox, MainViewModel.RecentsKeyReplacePattern, v => ViewModel.ReplacePattern = v);
+        Wire(FileNamesBox, MainViewModel.RecentsKeyFileNames, v => ViewModel.FileNames = v);
+        Wire(ExcludePathsBox, MainViewModel.RecentsKeyExcludePaths, v => ViewModel.ExcludePaths = v);
+
+        void Wire(TextBox box, string key, Action<string> apply)
+        {
+            // TextBox marks DoubleTapped Handled (for word selection) — register with handledEventsToo so we still see it.
+            box.AddHandler(UIElement.DoubleTappedEvent,
+                new DoubleTappedEventHandler((_, _) =>
+                {
+                    // Defer so word-selection doesn't fight the flyout focus.
+                    DispatcherQueue.TryEnqueue(() => ShowRecentsFlyout(box, key, apply));
+                }),
+                handledEventsToo: true);
+        }
     }
 
     private void OnFirstActivated(object sender, WindowActivatedEventArgs args)
@@ -92,6 +134,7 @@ public sealed partial class MainWindow : Window
         _initialFormFitDone = true;
         _cachedFormHeight = height + 56;
         FormRow.Height = new GridLength(_cachedFormHeight);
+        UpdateShowQueryButtonVisibility(FormAreaGrid.ActualHeight);
     }
 
     private void OnSearchCompleted()
@@ -171,6 +214,25 @@ public sealed partial class MainWindow : Window
         FormRow.Height = new GridLength(0, GridUnitType.Star);
     }
 
+    private void OnFormAreaSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        UpdateShowQueryButtonVisibility(e.NewSize.Height);
+    }
+
+    private void UpdateShowQueryButtonVisibility(double formAreaHeight)
+    {
+        if (ShowQueryButton is null) return;
+        if (_cachedFormHeight <= 0)
+        {
+            // Natural form height not yet measured — keep hidden until first FitFormRow runs.
+            ShowQueryButton.Visibility = Visibility.Collapsed;
+            return;
+        }
+        // Show only when the form area is meaningfully smaller than its natural full height.
+        var collapsed = formAreaHeight < _cachedFormHeight - 8;
+        ShowQueryButton.Visibility = collapsed ? Visibility.Visible : Visibility.Collapsed;
+    }
+
     private nint SubclassProc(nint hWnd, uint msg, nint wParam, nint lParam, nuint subclassId, nuint refData)
     {
         if (msg == NativeMethods.WM_GETMINMAXINFO)
@@ -237,28 +299,30 @@ public sealed partial class MainWindow : Window
     private void ShowRecentsFlyout(FrameworkElement anchor, string fieldKey, Action<string> apply)
     {
         var items = _recentsStore.Get(fieldKey).Take(10).ToList();
+        var width = anchor.ActualWidth > 0 ? anchor.ActualWidth : 240;
         var listView = new ListView
         {
             SelectionMode = ListViewSelectionMode.None,
             IsItemClickEnabled = true,
-            MinWidth = anchor.ActualWidth,
-            MaxHeight = 320,
+            Width = width,
+            MaxHeight = 240,
             FontSize = 12,
+            Padding = new Thickness(0),
         };
         var itemStyle = new Style(typeof(ListViewItem));
-        itemStyle.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(8, 2, 8, 2)));
+        itemStyle.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(6, 1, 6, 1)));
         itemStyle.Setters.Add(new Setter(FrameworkElement.MinHeightProperty, 0d));
         listView.ItemContainerStyle = itemStyle;
 
         if (items.Count == 0)
         {
             listView.IsItemClickEnabled = false;
-            listView.Items.Add(new TextBlock { Text = "(no recent values)", FontSize = 12, Opacity = 0.6, Padding = new Thickness(8, 4, 8, 4) });
+            listView.Items.Add(new TextBlock { Text = "(no recent values)", FontSize = 12, Opacity = 0.6, Padding = new Thickness(6, 2, 6, 2) });
         }
         else
         {
             foreach (var s in items)
-                listView.Items.Add(new TextBlock { Text = s.Replace('\r', ' ').Replace('\n', ' '), FontSize = 12 });
+                listView.Items.Add(new TextBlock { Text = s.Replace('\r', ' ').Replace('\n', ' '), FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis });
         }
 
         var flyout = new Flyout
@@ -266,6 +330,13 @@ public sealed partial class MainWindow : Window
             Content = listView,
             ShouldConstrainToRootBounds = true,
         };
+        // Strip the default flyout padding so the dropdown truly matches the input width edge-to-edge.
+        var presenterStyle = new Style(typeof(FlyoutPresenter));
+        presenterStyle.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(0)));
+        presenterStyle.Setters.Add(new Setter(FrameworkElement.MinWidthProperty, 0d));
+        presenterStyle.Setters.Add(new Setter(Control.MaxWidthProperty, double.PositiveInfinity));
+        flyout.FlyoutPresenterStyle = presenterStyle;
+
         listView.ItemClick += (_, e) =>
         {
             var idx = listView.Items.IndexOf(e.ClickedItem);
@@ -305,17 +376,35 @@ public sealed partial class MainWindow : Window
     // ---- Results: expand-all + double-click + copy + open ----
     private async void OnExpandAllClicked(object sender, RoutedEventArgs e) => await ViewModel.ExpandAllAsync(true);
     private async void OnCollapseAllClicked(object sender, RoutedEventArgs e) => await ViewModel.ExpandAllAsync(false);
+    private void OnShowQueryClicked(object sender, RoutedEventArgs e) => RestoreFormRow();
+
+    private void OnFileRowRightTapped(object sender, RightTappedRoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { DataContext: FileMatchViewModel clicked }) return;
+
+        // Only seed the selection from the right-clicked row when there is no current selection,
+        // so existing multi-select isn't collapsed when the user right-clicks one of the selected rows.
+        if (ResultsList.SelectedItems.Count == 0)
+            ResultsList.SelectedItems.Add(clicked);
+    }
 
     private async void OnOpenWithEditor(object sender, RoutedEventArgs e)
     {
-        var selected = SelectedFiles();
+        var selected = ExplicitlySelectedFiles();
         if (selected.Count == 0) return;
+
+        var settings = _settingsStore.Load();
+        if (string.IsNullOrWhiteSpace(settings.EditorCommand))
+        {
+            ShowError("No editor configured", "Set an editor command in Settings (gear icon, top right).");
+            return;
+        }
+
         if (selected.Count > 5)
         {
             if (!await ConfirmBulkAsync($"Open {selected.Count:N0} files in editor?",
                 $"This will launch {selected.Count:N0} editor windows.")) return;
         }
-        var settings = _settingsStore.Load();
         foreach (var f in selected)
             OpenFileInEditor(f, settings.EditorCommand);
     }
@@ -390,7 +479,7 @@ public sealed partial class MainWindow : Window
 
     private async void OnOpenContainingFolder(object sender, RoutedEventArgs e)
     {
-        var selected = SelectedFiles();
+        var selected = ExplicitlySelectedFiles();
         if (selected.Count == 0) return;
         if (selected.Count > 5)
         {
@@ -435,6 +524,13 @@ public sealed partial class MainWindow : Window
         e.Handled = true;
         if (sender is not FrameworkElement { DataContext: FileMatchViewModel clicked }) return;
 
+        var settings = _settingsStore.Load();
+        if (string.IsNullOrWhiteSpace(settings.EditorCommand))
+        {
+            ShowError("No editor configured", "Set an editor command in Settings (gear icon, top right).");
+            return;
+        }
+
         var selected = ResultsList.SelectedItems.OfType<FileMatchViewModel>().ToList();
         // If the double-clicked row isn't part of the current selection, treat the click as targeting just it.
         if (!selected.Contains(clicked))
@@ -454,7 +550,6 @@ public sealed partial class MainWindow : Window
             if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
         }
 
-        var settings = _settingsStore.Load();
         foreach (var f in selected)
             OpenFileInEditor(f, settings.EditorCommand);
     }
@@ -492,6 +587,7 @@ public sealed partial class MainWindow : Window
 
     private void OnCopyCsv(object sender, RoutedEventArgs e) => CopyToClipboard(BuildCsv(SelectedFiles()));
 
+    // For copy/export commands: fall back to "all results" when nothing is selected — that's a useful default.
     private IReadOnlyList<FileMatchViewModel> SelectedFiles()
     {
         var selected = ResultsList.SelectedItems.OfType<FileMatchViewModel>().ToList();
@@ -499,6 +595,10 @@ public sealed partial class MainWindow : Window
             selected = ViewModel.Results.ToList();
         return selected;
     }
+
+    // For destructive/launch commands (Open with editor, Open containing folder): never fall back to all.
+    private IReadOnlyList<FileMatchViewModel> ExplicitlySelectedFiles() =>
+        ResultsList.SelectedItems.OfType<FileMatchViewModel>().ToList();
 
     private static string BuildCsv(IReadOnlyList<FileMatchViewModel> files)
     {
@@ -819,6 +919,13 @@ public sealed partial class MainWindow : Window
 internal static class NativeMethods
 {
     public const uint WM_GETMINMAXINFO = 0x0024;
+    public const uint WM_KEYDOWN = 0x0100;
+    public const int VK_RETURN = 0x0D;
+    public const int VK_CONTROL = 0x11;
+    public const int VK_MENU = 0x12;
+
+    [DllImport("user32.dll")]
+    public static extern short GetKeyState(int nVirtKey);
 
     [StructLayout(LayoutKind.Sequential)]
     public struct POINT { public int x; public int y; }

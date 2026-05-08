@@ -160,7 +160,7 @@
         </Grid>
 
         <!-- Form area: content scroll + bottom-right action bar -->
-        <Grid Grid.Row="1">
+        <Grid Grid.Row="1" x:Name="FormAreaGrid" SizeChanged="OnFormAreaSizeChanged">
             <Grid.RowDefinitions>
                 <RowDefinition Height="*" />
                 <RowDefinition Height="Auto" />
@@ -436,6 +436,14 @@
         <!-- SEARCH RESULTS section header -->
         <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="8" Margin="8,4,8,2">
             <TextBlock Text="SEARCH RESULTS" Style="{StaticResource SectionHeader}" />
+            <Button x:Name="ShowQueryButton" Style="{StaticResource SmallButton}" Click="OnShowQueryClicked" Margin="0,4,0,0"
+                    Visibility="Collapsed"
+                    ToolTipService.ToolTip="Show search form (Esc)">
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                    <FontIcon Glyph="&#xE70E;" FontSize="10" />
+                    <TextBlock Text="Show query" />
+                </StackPanel>
+            </Button>
             <Button Style="{StaticResource SmallButton}" Click="OnExpandAllClicked" Margin="0,4,0,0"
                     ToolTipService.ToolTip="Expand all">
                 <StackPanel Orientation="Horizontal" Spacing="4">
@@ -549,7 +557,9 @@
                                     <RowDefinition Height="Auto" />
                                 </Grid.RowDefinitions>
 
-                                <Grid Grid.Row="0" Padding="6,1,6,1" DoubleTapped="OnFileRowDoubleTapped">
+                                <Grid Grid.Row="0" Padding="6,1,6,1"
+                                      DoubleTapped="OnFileRowDoubleTapped"
+                                      RightTapped="OnFileRowRightTapped">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="22" />
                                         <ColumnDefinition Width="{x:Bind Parent.NameWidth, Mode=OneWay}" />
