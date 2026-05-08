@@ -182,11 +182,13 @@ public partial class MainViewModel : ObservableObject
         var request = BuildRequest(roots);
         var examinedProgress = new Progress<int>(c => _dispatcher.TryEnqueue(() =>
         {
+            if (!IsSearching) return;
             ExaminedCount = c;
             UpdateRunningSummary();
         }));
         var rejectedProgress = new Progress<int>(c => _dispatcher.TryEnqueue(() =>
         {
+            if (!IsSearching) return;
             RejectedCount = c;
             UpdateRunningSummary();
         }));
@@ -204,6 +206,7 @@ public partial class MainViewModel : ObservableObject
                     var mc = MatchCount + match.ContentMatches.Count + match.NameMatches.Count;
                     _dispatcher.TryEnqueue(() =>
                     {
+                        if (!IsSearching) return;
                         Results.Add(vm);
                         MatchedFileCount = fc;
                         MatchCount = mc;
@@ -226,6 +229,9 @@ public partial class MainViewModel : ObservableObject
         {
             IsSearching = false;
             _searchCts = null;
+            // Belt and suspenders: if a late-firing progress callback set the running text after our final, strip it.
+            if (ResultsSummary.EndsWith(" (running)", StringComparison.Ordinal))
+                ResultsSummary = string.Concat(ResultsSummary.AsSpan(0, ResultsSummary.Length - 10), ".");
             SearchCompleted?.Invoke(this, EventArgs.Empty);
         }
     }
@@ -301,6 +307,20 @@ public partial class MainViewModel : ObservableObject
 
     [RelayCommand]
     private void ToggleSearchInExpanded() => IsSearchInExpanded = !IsSearchInExpanded;
+
+    [RelayCommand]
+    private void ResetWhat()
+    {
+        SearchPattern = "";
+        ReplacePattern = "";
+        UseRegex = false;
+        CaseSensitive = false;
+        WholeWord = false;
+        PreserveCase = true;
+        DotMatchesNewline = false;
+        SearchInNames = false;
+        KeepFileDate = false;
+    }
 
     [RelayCommand]
     private void ResetFilters()

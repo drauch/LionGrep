@@ -57,7 +57,7 @@ public sealed partial class MainWindow : Window
         if (Content is FrameworkElement root)
             root.SizeChanged += OnRootSizeChanged;
 
-        FormStackPanel.SizeChanged += OnFormStackPanelSizeChanged;
+        FormStackPanel.LayoutUpdated += OnFormStackPanelLayoutUpdated;
         RegisterPresetHotkeys();
     }
 
@@ -66,17 +66,17 @@ public sealed partial class MainWindow : Window
         Activated -= OnFirstActivated;
         if (Content is FrameworkElement root)
             ApplyBreakpointFor(root.ActualWidth);
-        SearchSplit.Focus(FocusState.Programmatic);
+        SearchPatternBox.Focus(FocusState.Programmatic);
     }
 
-    private void OnFormStackPanelSizeChanged(object sender, SizeChangedEventArgs e)
+    private void OnFormStackPanelLayoutUpdated(object? sender, object e)
     {
         if (_initialFormFitDone) return;
-        if (e.NewSize.Height <= 0) return;
+        if (FormStackPanel.ActualHeight <= 0) return;
         _initialFormFitDone = true;
-        FormStackPanel.SizeChanged -= OnFormStackPanelSizeChanged;
-        // Pixel-size the row to the form's natural content height plus a little breathing room for action bar + padding.
-        FormRow.Height = new GridLength(e.NewSize.Height + 56);
+        FormStackPanel.LayoutUpdated -= OnFormStackPanelLayoutUpdated;
+        // Pixel-size the row to the form's natural content height plus padding for action bar.
+        FormRow.Height = new GridLength(FormStackPanel.ActualHeight + 56);
     }
 
     private void OnSearchCompleted()

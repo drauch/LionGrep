@@ -198,8 +198,23 @@
                         <Button Grid.Column="4" VerticalAlignment="Top" Content="Browse…" Click="OnBrowseClicked" />
                     </Grid>
 
-                    <!-- WHAT -->
-                    <TextBlock Text="WHAT" Style="{StaticResource SectionHeader}" />
+                    <!-- WHAT (with Reset button) -->
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="WHAT" Style="{StaticResource SectionHeader}" />
+                        <Button Grid.Column="1" Style="{StaticResource SmallButton}"
+                                Command="{x:Bind ViewModel.ResetWhatCommand}"
+                                ToolTipService.ToolTip="Reset 'what' fields to defaults"
+                                Margin="0,4,0,0">
+                            <StackPanel Orientation="Horizontal" Spacing="4">
+                                <FontIcon Glyph="&#xE777;" FontSize="10" />
+                                <TextBlock Text="Reset" />
+                            </StackPanel>
+                        </Button>
+                    </Grid>
                     <Grid ColumnSpacing="6" RowSpacing="3">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="80" />
@@ -213,7 +228,7 @@
                         </Grid.RowDefinitions>
 
                         <TextBlock Text="Search for:" Style="{StaticResource FieldLabel}" Grid.Row="0" />
-                        <TextBox Grid.Row="0" Grid.Column="1"
+                        <TextBox x:Name="SearchPatternBox" Grid.Row="0" Grid.Column="1"
                                  Text="{x:Bind ViewModel.SearchPattern, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                  PlaceholderText="Pattern (text or regex)" FontSize="12" />
                         <Button Grid.Row="0" Grid.Column="2" Style="{StaticResource RecentsButton}" Click="OnSearchPatternRecentsClicked">

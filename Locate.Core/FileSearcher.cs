@@ -9,9 +9,14 @@ public sealed class FileSearcher
     private const int BinaryProbeBytes = 8192;
 
     public FileMatch? Search(string path, IMatcher matcher, CancellationToken ct = default, bool skipBinary = false)
+        => Search(path, matcher, skipBinary, out _, ct);
+
+    public FileMatch? Search(string path, IMatcher matcher, bool skipBinary, out bool wasBinarySkipped, CancellationToken ct = default)
     {
         ArgumentException.ThrowIfNullOrEmpty(path);
         ArgumentNullException.ThrowIfNull(matcher);
+
+        wasBinarySkipped = false;
 
         var info = new FileInfo(path);
         if (!info.Exists || info.Length == 0)
@@ -34,7 +39,10 @@ public sealed class FileSearcher
                 var content = bytes[detected.BomLength..];
 
                 if (skipBinary && IsLikelyBinary(content, detected.Encoding))
+                {
+                    wasBinarySkipped = true;
                     return null;
+                }
 
                 return detected.Encoding is UTF8Encoding
                     ? SearchUtf8(path, content, detected.Encoding, matcher, ct)
