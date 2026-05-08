@@ -57,7 +57,6 @@ public sealed partial class MainWindow : Window
         if (Content is FrameworkElement root)
             root.SizeChanged += OnRootSizeChanged;
 
-        FormStackPanel.LayoutUpdated += OnFormStackPanelLayoutUpdated;
         RegisterPresetHotkeys();
     }
 
@@ -66,17 +65,23 @@ public sealed partial class MainWindow : Window
         Activated -= OnFirstActivated;
         if (Content is FrameworkElement root)
             ApplyBreakpointFor(root.ActualWidth);
-        SearchPatternBox.Focus(FocusState.Programmatic);
     }
 
-    private void OnFormStackPanelLayoutUpdated(object? sender, object e)
+    private void OnFormStackPanelLoaded(object sender, RoutedEventArgs e)
     {
-        if (_initialFormFitDone) return;
-        if (FormStackPanel.ActualHeight <= 0) return;
-        _initialFormFitDone = true;
-        FormStackPanel.LayoutUpdated -= OnFormStackPanelLayoutUpdated;
-        // Pixel-size the row to the form's natural content height plus padding for action bar.
-        FormRow.Height = new GridLength(FormStackPanel.ActualHeight + 56);
+        // Defer twice to be sure: first hop runs after all queued layout work, second after any second-order layout.
+        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+        {
+            DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+            {
+                if (!_initialFormFitDone && FormStackPanel.ActualHeight > 0)
+                {
+                    _initialFormFitDone = true;
+                    FormRow.Height = new GridLength(FormStackPanel.ActualHeight + 56);
+                }
+                SearchPatternBox.Focus(FocusState.Programmatic);
+            });
+        });
     }
 
     private void OnSearchCompleted()

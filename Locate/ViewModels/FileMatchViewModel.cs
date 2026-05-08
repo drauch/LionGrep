@@ -2,9 +2,30 @@ using System.Collections.ObjectModel;
 using System.Text;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Locate.Core;
+using Microsoft.UI;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Media;
+using Windows.UI;
 
 namespace Locate.ViewModels;
+
+public sealed class FileNameSegment
+{
+    private static readonly SolidColorBrush HighlightBg = new(Color.FromArgb(0xFF, 0xFF, 0xEB, 0x3B));
+    private static readonly SolidColorBrush HighlightFg = new(Colors.Black);
+    private static readonly SolidColorBrush TransparentBg = new(Colors.Transparent);
+
+    public FileNameSegment(string text, bool isMatched)
+    {
+        Text = text;
+        IsMatched = isMatched;
+    }
+
+    public string Text { get; }
+    public bool IsMatched { get; }
+    public Brush Background => IsMatched ? HighlightBg : TransparentBg;
+    public Brush? Foreground => IsMatched ? HighlightFg : null;
+}
 
 public partial class FileMatchViewModel : ObservableObject
 {
@@ -17,6 +38,7 @@ public partial class FileMatchViewModel : ObservableObject
         InsertionIndex = insertionIndex;
         Lines = new ObservableCollection<LineMatchViewModel>(
             model.ContentMatches.Select(m => new LineMatchViewModel(model.Path, m)));
+        FileNameSegments = ComputeFileNameSegments(model);
     }
 
     public MainViewModel Parent { get; }
@@ -97,6 +119,60 @@ public partial class FileMatchViewModel : ObservableObject
     private bool _isExpanded;
 
     public Visibility IsExpandedVisibility => IsExpanded ? Visibility.Visible : Visibility.Collapsed;
+
+    public bool IsExpandable => Lines.Count > 0;
+    public Visibility ChevronVisibility => IsExpandable ? Visibility.Visible : Visibility.Collapsed;
+
+    public IReadOnlyList<FileNameSegment> FileNameSegments { get; }
+
+    private static IReadOnlyList<FileNameSegment> ComputeFileNameSegments(FileMatch model)
+    {
+        var fileName = System.IO.Path.GetFileName(model.Path);
+        if (model.NameMatches.Count == 0 || string.IsNullOrEmpty(model.RelativePath))
+            return [new FileNameSegment(fileName, false)];
+
+        var fileNameStart = model.RelativePath.Length - fileName.Length;
+
+        // Translate, clamp, and merge match spans into the file-name segment of the relative path.
+        var matched = new List<(int Start, int End)>();
+        foreach (var span in model.NameMatches)
+        {
+            var s = span.Column - fileNameStart;
+            var e = s + span.Length;
+            if (e <= 0 || s >= fileName.Length) continue;
+            s = Math.Max(0, s);
+            e = Math.Min(fileName.Length, e);
+            if (e > s) matched.Add((s, e));
+        }
+        if (matched.Count == 0)
+            return [new FileNameSegment(fileName, false)];
+
+        // Merge overlapping/adjacent ranges.
+        matched.Sort((a, b) => a.Start.CompareTo(b.Start));
+        var merged = new List<(int Start, int End)> { matched[0] };
+        for (var i = 1; i < matched.Count; i++)
+        {
+            var prev = merged[^1];
+            var curr = matched[i];
+            if (curr.Start <= prev.End)
+                merged[^1] = (prev.Start, Math.Max(prev.End, curr.End));
+            else
+                merged.Add(curr);
+        }
+
+        var segments = new List<FileNameSegment>();
+        var cursor = 0;
+        foreach (var (s, e) in merged)
+        {
+            if (s > cursor) segments.Add(new FileNameSegment(fileName[cursor..s], false));
+            segments.Add(new FileNameSegment(fileName[s..e], true));
+            cursor = e;
+        }
+        if (cursor < fileName.Length)
+            segments.Add(new FileNameSegment(fileName[cursor..], false));
+
+        return segments;
+    }
 
     private static string FormatSize(long bytes)
     {

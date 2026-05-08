@@ -10,4 +10,5 @@ public sealed record FileMatch(
     string Path,
     Encoding? Encoding,
     IReadOnlyList<LineMatch> ContentMatches,
-    IReadOnlyList<MatchSpan> NameMatches);
+    IReadOnlyList<MatchSpan> NameMatches,
+    string? RelativePath = null);

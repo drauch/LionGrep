@@ -165,7 +165,7 @@
             </Grid.RowDefinitions>
 
             <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto" Padding="6,2,6,2">
-                <StackPanel x:Name="FormStackPanel" Spacing="2">
+                <StackPanel x:Name="FormStackPanel" Spacing="2" Loaded="OnFormStackPanelLoaded">
 
                     <!-- WHERE -->
                     <TextBlock Text="WHERE" Style="{StaticResource SectionHeader}" />
@@ -533,11 +533,27 @@
                                     </Grid.ColumnDefinitions>
                                     <ToggleButton Grid.Column="0"
                                                   IsChecked="{x:Bind IsExpanded, Mode=TwoWay}"
+                                                  Visibility="{x:Bind ChevronVisibility, Mode=OneTime}"
                                                   Background="Transparent" BorderThickness="0"
                                                   Padding="2" MinWidth="0" Width="20" Height="20" VerticalAlignment="Center">
                                         <FontIcon Glyph="&#xE70D;" FontSize="9" />
                                     </ToggleButton>
-                                    <TextBlock Grid.Column="1" Text="{x:Bind FileName}" FontSize="12" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                    <ItemsControl Grid.Column="1" ItemsSource="{x:Bind FileNameSegments}"
+                                                  VerticalAlignment="Center">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <StackPanel Orientation="Horizontal" />
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="vm:FileNameSegment">
+                                                <Border Background="{x:Bind Background, Mode=OneTime}" Padding="0,0,0,0">
+                                                    <TextBlock Text="{x:Bind Text}" FontSize="12"
+                                                               Foreground="{x:Bind Foreground, Mode=OneTime}" />
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
                                     <TextBlock Grid.Column="3" Text="{x:Bind SizeText}" FontSize="12" VerticalAlignment="Center" />
                                     <TextBlock Grid.Column="5" Text="{x:Bind MatchCountText}" FontSize="12" VerticalAlignment="Center" />
                                     <TextBlock Grid.Column="7" Text="{x:Bind Directory}" FontSize="12" VerticalAlignment="Center" Foreground="Gray" TextTrimming="CharacterEllipsis" />

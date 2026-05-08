@@ -44,13 +44,17 @@ public sealed class Searcher
             onFileExamined?.Report(examined);
 
             IReadOnlyList<MatchSpan> nameMatches = [];
+            string? relativePath = null;
             if (request.Search.SearchInNames && hasContentPattern)
             {
                 var relative = Path.GetRelativePath(file.RootPath, file.FullPath).Replace('\\', '/');
                 var hits = new List<MatchSpan>();
                 matcher.FindMatches(relative, hits);
                 if (hits.Count > 0)
+                {
                     nameMatches = hits;
+                    relativePath = relative;
+                }
             }
 
             FileMatch? contentMatch = null;
@@ -73,11 +77,11 @@ public sealed class Searcher
             }
 
             if (contentMatch is not null && nameMatches.Count > 0)
-                yield return contentMatch with { NameMatches = nameMatches };
+                yield return contentMatch with { NameMatches = nameMatches, RelativePath = relativePath };
             else if (contentMatch is not null)
                 yield return contentMatch;
             else if (nameMatches.Count > 0)
-                yield return new FileMatch(file.FullPath, Encoding: null, ContentMatches: [], NameMatches: nameMatches);
+                yield return new FileMatch(file.FullPath, Encoding: null, ContentMatches: [], NameMatches: nameMatches, RelativePath: relativePath);
         }
     }
 }

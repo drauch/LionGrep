@@ -142,6 +142,8 @@ Streamed search and replace for arbitrary file sizes is a v1.1 item.
 
 Columns left-to-right: **Name, Size, Matches, Path, Ext, Encoding, Date modified**. The leading column is a chevron toggle to expand individual file rows and see the matched lines (with the matched substring bolded).
 
+When **Search in file & sub directory names** is on and a file is in the results because of a **name** match, the matched portion of the file name in the **Name** column is highlighted with a yellow background. If a file appears for name reasons only (no content matches), the row's chevron is hidden — there's nothing to expand. Files with content matches show the chevron normally; if their name also matched, the highlight shows there too.
+
 - **Drag** the thin gap between two columns to resize them. The east-west cursor confirms you've grabbed the handle.
 - **Click** any column header to cycle sort: **None → Ascending → Descending → None**. The active column shows `▲` or `▼`. When the primary sort is **Path**, the secondary sort is always **Name** so siblings within a directory appear alphabetically.
 - The first search of each session sorts results by **Path → Name** ascending. Subsequent searches respect whichever sort you've chosen (sticky across searches).
