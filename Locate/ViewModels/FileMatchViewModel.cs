@@ -10,12 +10,15 @@ public partial class FileMatchViewModel : ObservableObject
 {
     private readonly FileMatch _model;
 
-    public FileMatchViewModel(FileMatch model)
+    public FileMatchViewModel(MainViewModel parent, FileMatch model)
     {
+        Parent = parent;
         _model = model;
         Lines = new ObservableCollection<LineMatchViewModel>(
             model.ContentMatches.Select(m => new LineMatchViewModel(model.Path, m)));
     }
+
+    public MainViewModel Parent { get; }
 
     public string Path => _model.Path;
     public string FileName => System.IO.Path.GetFileName(_model.Path);

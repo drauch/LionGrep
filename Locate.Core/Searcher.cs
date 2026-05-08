@@ -12,14 +12,22 @@ public sealed class Searcher
 
     public IEnumerable<FileMatch> Search(SearchRequest request, CancellationToken ct = default)
     {
+        return Search(request, onFileExamined: null, ct);
+    }
+
+    public IEnumerable<FileMatch> Search(SearchRequest request, IProgress<int>? onFileExamined, CancellationToken ct = default)
+    {
         ArgumentNullException.ThrowIfNull(request);
 
         var matcher = MatcherFactory.Create(request.Search);
         var hasContentPattern = !string.IsNullOrEmpty(request.Search.Pattern);
+        var examined = 0;
 
         foreach (var file in _enumerator.Enumerate(request.Roots, request.Enumeration, ct))
         {
             ct.ThrowIfCancellationRequested();
+            examined++;
+            onFileExamined?.Report(examined);
 
             IReadOnlyList<MatchSpan> nameMatches = [];
             if (request.Search.SearchInNames && hasContentPattern)

@@ -92,6 +92,7 @@ public sealed class FileEnumerator
     {
         SizeFilterMode.LessThan => bytes < filter.Bytes,
         SizeFilterMode.GreaterThan => bytes > filter.Bytes,
+        SizeFilterMode.Between when filter.UpperBytes is { } upper => bytes >= filter.Bytes && bytes <= upper,
         _ => true,
     };
 

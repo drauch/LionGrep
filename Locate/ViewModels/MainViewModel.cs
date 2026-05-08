@@ -24,7 +24,6 @@ public partial class MainViewModel : ObservableObject
     private readonly SettingsStore _settingsStore;
     private readonly PresetsStore _presetsStore;
     private CancellationTokenSource? _searchCts;
-    private CancellationTokenSource? _expandCts;
 
     public MainViewModel(DispatcherQueue dispatcher, RecentsStore recents, SettingsStore settingsStore, PresetsStore presetsStore)
     {
@@ -61,9 +60,11 @@ public partial class MainViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(SizeValueEnabled))]
+    [NotifyPropertyChangedFor(nameof(SizeUpperVisibility))]
     private int _sizeModeIndex;
 
     [ObservableProperty] private double _sizeKb = 256;
+    [ObservableProperty] private double _sizeKbUpper = 1024;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(DateFromVisibility))]
@@ -86,11 +87,24 @@ public partial class MainViewModel : ObservableObject
 
     public bool IsDotMatchesNewlineEnabled => UseRegex;
     public bool SizeValueEnabled => SizeModeIndex > 0;
+    public Visibility SizeUpperVisibility => SizeModeIndex == 3 ? Visibility.Visible : Visibility.Collapsed;
     public Visibility DateFromVisibility => DateModeIndex == 0 ? Visibility.Collapsed : Visibility.Visible;
     public Visibility DateToVisibility => DateModeIndex == 4 ? Visibility.Visible : Visibility.Collapsed;
 
-    // ---- Status ----
+    // ---- Result column widths (resizable + responsive) ----
+    [ObservableProperty] private GridLength _nameWidth = new(240);
+    [ObservableProperty] private GridLength _sizeWidth = new(70);
+    [ObservableProperty] private GridLength _matchesWidth = new(70);
+    [ObservableProperty] private GridLength _pathWidth = new(1, GridUnitType.Star);
+    [ObservableProperty] private GridLength _extWidth = new(50);
+    [ObservableProperty] private GridLength _encodingWidth = new(80);
+    [ObservableProperty] private GridLength _dateWidth = new(140);
+
+    // ---- Status / counts ----
     [ObservableProperty] private string _resultsSummary = "No search run yet.";
+    [ObservableProperty] private int _examinedCount;
+    [ObservableProperty] private int _matchedFileCount;
+    [ObservableProperty] private int _matchCount;
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(SearchCommand))]
@@ -105,18 +119,14 @@ public partial class MainViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(ReplaceCommand))]
     private bool _isReplacing;
 
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(FormVisibility))]
-    [NotifyPropertyChangedFor(nameof(ShowFormButtonVisibility))]
-    private bool _isFormVisible = true;
-
     public Visibility SearchButtonVisibility => IsSearching ? Visibility.Collapsed : Visibility.Visible;
     public Visibility CancelButtonVisibility => IsSearching ? Visibility.Visible : Visibility.Collapsed;
-    public Visibility FormVisibility => IsFormVisible ? Visibility.Visible : Visibility.Collapsed;
-    public Visibility ShowFormButtonVisibility => IsFormVisible ? Visibility.Collapsed : Visibility.Visible;
 
     public ObservableCollection<FileMatchViewModel> Results { get; } = [];
     public ObservableCollection<Preset> Presets { get; } = [];
+
+    /// <summary>Raised when a search or replace operation starts so the host window can collapse the form row.</summary>
+    public event EventHandler? OperationStarted;
 
     // ---- Commands ----
     [RelayCommand(CanExecute = nameof(CanSearch))]
@@ -138,41 +148,47 @@ public partial class MainViewModel : ObservableObject
             return;
         }
 
-        IsFormVisible = false;
+        OperationStarted?.Invoke(this, EventArgs.Empty);
         IsSearching = true;
         Results.Clear();
+        ExaminedCount = 0;
+        MatchedFileCount = 0;
+        MatchCount = 0;
         _searchCts = new CancellationTokenSource();
         var ct = _searchCts.Token;
 
         var request = BuildRequest(roots);
+        var progress = new Progress<int>(c => _dispatcher.TryEnqueue(() =>
+        {
+            ExaminedCount = c;
+            UpdateRunningSummary();
+        }));
 
-        var fileCount = 0;
-        var matchCount = 0;
         try
         {
             await Task.Run(() =>
             {
-                foreach (var match in _searcher.Search(request, ct))
+                foreach (var match in _searcher.Search(request, progress, ct))
                 {
                     ct.ThrowIfCancellationRequested();
-                    var vm = new FileMatchViewModel(match);
-                    fileCount++;
-                    matchCount += match.ContentMatches.Count + match.NameMatches.Count;
-                    var fc = fileCount;
-                    var mc = matchCount;
+                    var vm = new FileMatchViewModel(this, match);
+                    var fc = MatchedFileCount + 1;
+                    var mc = MatchCount + match.ContentMatches.Count + match.NameMatches.Count;
                     _dispatcher.TryEnqueue(() =>
                     {
                         Results.Add(vm);
-                        ResultsSummary = $"{fc:N0} files, {mc:N0} matches… (running)";
+                        MatchedFileCount = fc;
+                        MatchCount = mc;
+                        UpdateRunningSummary();
                     });
                 }
             }, ct);
-            ResultsSummary = $"{fileCount:N0} files, {matchCount:N0} matches.";
+            ResultsSummary = $"{MatchedFileCount:N0} files, {MatchCount:N0} matches, {Math.Max(0, ExaminedCount - MatchedFileCount):N0} skipped.";
             SaveRecents();
         }
         catch (OperationCanceledException)
         {
-            ResultsSummary = $"Cancelled. {fileCount:N0} files, {matchCount:N0} matches found.";
+            ResultsSummary = $"Cancelled. {MatchedFileCount:N0} files, {MatchCount:N0} matches, {Math.Max(0, ExaminedCount - MatchedFileCount):N0} skipped.";
         }
         catch (Exception ex)
         {
@@ -184,6 +200,9 @@ public partial class MainViewModel : ObservableObject
             _searchCts = null;
         }
     }
+
+    private void UpdateRunningSummary() =>
+        ResultsSummary = $"{MatchedFileCount:N0} files, {MatchCount:N0} matches, {Math.Max(0, ExaminedCount - MatchedFileCount):N0} skipped (running)";
 
     private bool CanSearch() => !IsSearching && !IsReplacing;
 
@@ -205,7 +224,7 @@ public partial class MainViewModel : ObservableObject
             return;
         }
 
-        IsFormVisible = false;
+        OperationStarted?.Invoke(this, EventArgs.Empty);
         IsReplacing = true;
         try
         {
@@ -252,31 +271,19 @@ public partial class MainViewModel : ObservableObject
     private bool CanReplace() => !IsSearching && !IsReplacing && Results.Count > 0;
 
     [RelayCommand]
-    private void ShowForm() => IsFormVisible = true;
-
-    [RelayCommand]
     private void ToggleSearchInExpanded() => IsSearchInExpanded = !IsSearchInExpanded;
 
     /// <summary>Sets IsExpanded on every result, in dispatcher batches so the UI thread stays responsive on large lists.</summary>
     public async Task ExpandAllAsync(bool expand)
     {
-        _expandCts?.Cancel();
-        _expandCts = new CancellationTokenSource();
-        var ct = _expandCts.Token;
-
         const int BatchSize = 50;
-        try
+        for (var i = 0; i < Results.Count; i += BatchSize)
         {
-            for (var i = 0; i < Results.Count; i += BatchSize)
-            {
-                if (ct.IsCancellationRequested) return;
-                var end = Math.Min(i + BatchSize, Results.Count);
-                for (var j = i; j < end; j++)
-                    Results[j].IsExpanded = expand;
-                await Task.Yield();
-            }
+            var end = Math.Min(i + BatchSize, Results.Count);
+            for (var j = i; j < end; j++)
+                Results[j].IsExpanded = expand;
+            await Task.Yield();
         }
-        catch (OperationCanceledException) { }
     }
 
     // ---- Helpers ----
@@ -313,6 +320,7 @@ public partial class MainViewModel : ObservableObject
         {
             1 => new SizeFilter(SizeFilterMode.LessThan, (long)(SizeKb * 1024)),
             2 => new SizeFilter(SizeFilterMode.GreaterThan, (long)(SizeKb * 1024)),
+            3 => new SizeFilter(SizeFilterMode.Between, (long)(SizeKb * 1024), (long)(SizeKbUpper * 1024)),
             _ => null,
         },
         Date = (DateModeIndex, DateFrom, DateTo) switch
