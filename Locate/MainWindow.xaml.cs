@@ -9,6 +9,7 @@ using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Graphics;
+using Windows.Storage;
 using Windows.Storage.Pickers;
 using Windows.System;
 using WinRT.Interop;
@@ -500,6 +501,94 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    // ---- Open with… (Windows shell "Open With" dialog) ----
+    private async void OnOpenWithDialog(object sender, RoutedEventArgs e)
+    {
+        var selected = ExplicitlySelectedFiles();
+        if (selected.Count == 0) return;
+        if (selected.Count > 1)
+        {
+            if (!await ConfirmBulkAsync($"Open {selected.Count:N0} files with…?",
+                $"This will open {selected.Count:N0} 'Open With' dialogs.")) return;
+        }
+        foreach (var f in selected)
+        {
+            try
+            {
+                // Built-in shell32 "Open With" dialog. No COM, just rundll32.
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = "rundll32.exe",
+                    Arguments = $"shell32.dll,OpenAs_RunDLL \"{f.Path}\"",
+                    UseShellExecute = false,
+                });
+            }
+            catch { /* ignore */ }
+        }
+    }
+
+    // ---- Cut / Copy files (Explorer-compatible clipboard) ----
+    private async void OnCutFiles(object sender, RoutedEventArgs e)
+        => await PutFilesOnClipboardAsync(DataPackageOperation.Move);
+
+    private async void OnCopyFiles(object sender, RoutedEventArgs e)
+        => await PutFilesOnClipboardAsync(DataPackageOperation.Copy);
+
+    private async Task PutFilesOnClipboardAsync(DataPackageOperation op)
+    {
+        var paths = ExplicitlySelectedFiles().Select(f => f.Path).ToList();
+        if (paths.Count == 0) return;
+        var pkg = new DataPackage { RequestedOperation = op };
+        var items = new List<IStorageItem>();
+        foreach (var p in paths)
+        {
+            try { items.Add(await StorageFile.GetFileFromPathAsync(p)); }
+            catch { /* skip files we can't open as StorageFile */ }
+        }
+        if (items.Count == 0) return;
+        pkg.SetStorageItems(items);
+        Clipboard.SetContent(pkg);
+        Clipboard.Flush();
+    }
+
+    // ---- Delete (to Recycle Bin) ----
+    private async void OnDeleteFiles(object sender, RoutedEventArgs e)
+    {
+        var selected = ExplicitlySelectedFiles().ToList();
+        if (selected.Count == 0) return;
+        var msg = selected.Count == 1
+            ? $"Move \"{selected[0].FileName}\" to the Recycle Bin?"
+            : $"Move {selected.Count:N0} files to the Recycle Bin?";
+        if (!await ConfirmBulkAsync("Delete", msg)) return;
+
+        var deleted = new List<FileMatchViewModel>();
+        foreach (var f in selected)
+        {
+            try
+            {
+                var sf = await StorageFile.GetFileFromPathAsync(f.Path);
+                // StorageDeleteOption.Default = Recycle Bin (where supported); PermanentDelete bypasses it.
+                await sf.DeleteAsync(StorageDeleteOption.Default);
+                deleted.Add(f);
+            }
+            catch { /* file already gone, locked, etc. */ }
+        }
+        // Drop the now-deleted files from the live results list so the UI reflects reality.
+        foreach (var f in deleted)
+            ViewModel.Results.Remove(f);
+    }
+
+    // ---- Properties (Windows file properties dialog) ----
+    private void OnShowProperties(object sender, RoutedEventArgs e)
+    {
+        var selected = ExplicitlySelectedFiles();
+        if (selected.Count == 0) return;
+        // SHObjectProperties is one-file-at-a-time; for multi-select, only the right-clicked / first one.
+        var f = selected[0];
+        try { NativeMethods.SHObjectProperties(_windowHandle, NativeMethods.SHOP_FILEPATH, f.Path, null); }
+        catch { /* ignore */ }
+    }
+
     private async Task<bool> ConfirmBulkAsync(string title, string content)
     {
         var dialog = new ContentDialog
@@ -955,4 +1044,13 @@ internal static class NativeMethods
 
     [DllImport("user32.dll")]
     public static extern uint GetDpiForWindow(nint hwnd);
+
+    public const uint SHOP_FILEPATH = 0x2;
+
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
+    public static extern bool SHObjectProperties(
+        nint hwnd,
+        uint shopObjectType,
+        [MarshalAs(UnmanagedType.LPWStr)] string pszObjectName,
+        [MarshalAs(UnmanagedType.LPWStr)] string? pszPropertyPage);
 }

@@ -541,9 +541,21 @@
                                     <FontIcon Glyph="&#xE70F;" />
                                 </MenuFlyoutItem.Icon>
                             </MenuFlyoutItem>
+                            <MenuFlyoutItem Text="Open with…" Click="OnOpenWithDialog" />
                             <MenuFlyoutItem Text="Open containing folder" Click="OnOpenContainingFolder">
                                 <MenuFlyoutItem.Icon>
                                     <FontIcon Glyph="&#xE838;" />
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                            <MenuFlyoutSeparator />
+                            <MenuFlyoutItem Text="Cut" Click="OnCutFiles">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon Glyph="&#xE8C6;" />
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                            <MenuFlyoutItem Text="Copy" Click="OnCopyFiles">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon Glyph="&#xE8C8;" />
                                 </MenuFlyoutItem.Icon>
                             </MenuFlyoutItem>
                             <MenuFlyoutSeparator />
@@ -551,6 +563,18 @@
                             <MenuFlyoutItem Text="Copy filename(s) to clipboard" Click="OnCopyName" />
                             <MenuFlyoutItem Text="Copy line(s) to clipboard" Click="OnCopyLine" />
                             <MenuFlyoutItem Text="Copy as CSV" Click="OnCopyCsv" />
+                            <MenuFlyoutSeparator />
+                            <MenuFlyoutItem Text="Delete" Click="OnDeleteFiles">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon Glyph="&#xE74D;" />
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                            <MenuFlyoutSeparator />
+                            <MenuFlyoutItem Text="Properties" Click="OnShowProperties">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon Glyph="&#xE946;" />
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
                         </MenuFlyout>
                     </ListView.ContextFlyout>
                     <ListView.ItemContainerStyle>

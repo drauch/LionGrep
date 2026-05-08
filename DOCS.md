@@ -184,11 +184,15 @@ When the window narrows, columns are hidden in this priority order (most aggress
 Multi-select via Ctrl/Shift-click as in any ListView. Right-click on a row that isn't part of the current selection narrows the selection to just that row before opening the context menu (so you don't accidentally act on the entire list).
 
 - **Open with editor** — runs the configured editor command for each selected file. If no editor is configured (or the launch fails), an error dialog appears. Multi-select (more than one file) always prompts a confirmation first.
+- **Open with…** — invokes the standard Windows "Open With" picker (`rundll32 shell32.dll,OpenAs_RunDLL`). Multi-select prompts a confirmation since each file gets its own dialog.
 - **Open containing folder** — opens Explorer with each selected file pre-selected (`/select,...`). Multi-select always prompts a confirmation first.
+- **Cut** / **Copy** — places the selected file(s) on the system clipboard as `StorageItems` with the appropriate move/copy preferred-drop-effect. Pasting in Explorer (or any shell-aware target) moves or copies them just like a native cut/copy.
 - **Copy path(s) to clipboard**
 - **Copy filename(s) to clipboard**
 - **Copy line(s) to clipboard** — the matched line text(s).
 - **Copy as CSV** — `Name,Path,Line,Column,Text`, one row per match. RFC-4180 quoting (values containing commas, quotes, CR, or LF are wrapped in `"…"` with internal `"` doubled).
+- **Delete** — moves the selected file(s) to the **Recycle Bin** via `StorageFile.DeleteAsync`. Always confirms first; deleted rows are removed from the live results list.
+- **Properties** — opens the standard Windows file properties dialog (`SHObjectProperties`). With multi-select, only the first file's properties are shown.
 
 Ctrl+C is **not** bound by default — use the right-click menu (or Export buttons in the SEARCH RESULTS header) to copy/export.
 
