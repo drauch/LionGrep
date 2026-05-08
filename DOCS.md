@@ -93,7 +93,7 @@ Clicking the **Replace…** button always opens a confirmation dialog with three
 - **Replace** *(secondary)* — overwrites in place. **Cannot be undone.**
 - **Cancel** *(default)* — Esc / Enter on the dialog cancels.
 
-**Bypass for power users:** `Ctrl+Alt+Enter` always replaces immediately, no dialog, **no backup**. Use this when you've already audited the result list and want to commit the rewrite without further prompts.
+**Bypass for power users:** `Ctrl+Alt+Enter` always replaces immediately, no dialog, **no backup**. Use this when you've already audited the result list and want to commit the rewrite without further prompts. To make the **Replace…** button behave the same way (immediate, no backup, no dialog), tick **Don't warn when replacing** in Settings.
 
 ### 4.2 Undo
 
@@ -240,6 +240,7 @@ The form's last successful state is also auto-restored on next launch (a "last f
 Opened from the gear icon in the title bar.
 
 - **External editor** — command line for opening a file at a given line/column. Browse picks an `.exe` and pre-fills a sensible template like `"C:\…\code.exe" "%path%":%line%:%column%`. **Quote `%path%`** if your paths might contain spaces.
+- **Don't warn when replacing** — when ticked, the **Replace…** button skips the 3-way confirmation dialog and replaces immediately (no `.bak`), exactly like `Ctrl+Alt+Enter`. The dialog otherwise always shows by default.
 - **Remember recently used values between sessions** — when ticked (default), the recents dropdown for each input persists in the registry. Untick to disable: existing history is wiped on Save and no new entries are recorded.
 - **Presets** — list view on the left, details panel on the right. Add / Remove buttons. Each preset has a name, optional hotkey, and three apply-group checkboxes. Save persists everything; Close also saves.
 - **Reset everything…** (footer, left side) — wipes the entire `HKCU\Software\Locate` registry hive: settings, presets, recents, and the last-form snapshot. Confirmation dialog protects against accidents; the action is irreversible.

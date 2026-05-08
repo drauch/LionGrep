@@ -773,6 +773,14 @@ public sealed partial class MainWindow : Window
     {
         if (!ViewModel.IsReplaceEnabled) return;
 
+        // "Don't warn when replacing" in Settings makes the Replace button behave like Ctrl+Alt+Enter:
+        // immediate replace, no backup, no dialog.
+        if (_settingsStore.Load().DontWarnWhenReplacing)
+        {
+            await ViewModel.ReplaceCommand.ExecuteAsync(null);
+            return;
+        }
+
         var dialog = new ContentDialog
         {
             XamlRoot = Content.XamlRoot,
