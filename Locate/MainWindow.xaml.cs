@@ -506,25 +506,55 @@ public sealed partial class MainWindow : Window
     private void OnSizeNumberBoxLoaded(object sender, RoutedEventArgs e)
     {
         if (sender is not NumberBox nb) return;
-        HideDeleteButton(nb);
-        // ValueChanged fires when the inner TextBox commits; the DeleteButton state can flip back, so re-collapse.
-        nb.ValueChanged += (_, _) => HideDeleteButton(nb);
+        // The inner TextBox's template (which contains the DeleteButton part) may not be applied
+        // yet at NumberBox.Loaded. Defer to a later dispatcher tick so the part is realized.
+        TryHideDeleteButton(nb, attemptsRemaining: 5);
     }
 
-    private static void HideDeleteButton(DependencyObject root)
+    private void TryHideDeleteButton(NumberBox nb, int attemptsRemaining)
+    {
+        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+        {
+            // Right-align the digits in the inner TextBox (named "InputBox" in NumberBox's template).
+            if (FindDescendantByName(nb, "InputBox") is TextBox input)
+                input.TextAlignment = TextAlignment.Right;
+
+            var btn = FindDescendantByName(nb, "DeleteButton") as FrameworkElement;
+            if (btn is null)
+            {
+                if (attemptsRemaining > 0) TryHideDeleteButton(nb, attemptsRemaining - 1);
+                return;
+            }
+            SuppressDeleteButton(btn);
+        });
+    }
+
+    private static void SuppressDeleteButton(FrameworkElement btn)
+    {
+        btn.Visibility = Visibility.Collapsed;
+        btn.Width = 0;
+        // The TextBox's VisualStateManager flips DeleteButton.Visibility back to Visible when the
+        // ButtonVisible state activates (text present + focus). Force it Collapsed every time
+        // someone sets it back. The callback only re-runs when the value actually changes, so no
+        // recursion risk.
+        btn.RegisterPropertyChangedCallback(UIElement.VisibilityProperty, (s, _) =>
+        {
+            if (s is FrameworkElement el && el.Visibility == Visibility.Visible)
+                el.Visibility = Visibility.Collapsed;
+        });
+    }
+
+    private static DependencyObject? FindDescendantByName(DependencyObject root, string name)
     {
         var count = VisualTreeHelper.GetChildrenCount(root);
         for (var i = 0; i < count; i++)
         {
             var child = VisualTreeHelper.GetChild(root, i);
-            if (child is FrameworkElement { Name: "DeleteButton" } fe)
-            {
-                fe.Visibility = Visibility.Collapsed;
-                fe.Width = 0;
-                continue;
-            }
-            HideDeleteButton(child);
+            if (child is FrameworkElement fe && fe.Name == name) return child;
+            var result = FindDescendantByName(child, name);
+            if (result is not null) return result;
         }
+        return null;
     }
 
     // ---- Open with… (Windows shell "Open With" dialog) ----
