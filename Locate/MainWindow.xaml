@@ -336,11 +336,13 @@
                                 </ComboBox>
                                 <NumberBox Value="{x:Bind ViewModel.SizeKb, Mode=TwoWay}"
                                            Minimum="0" SpinButtonPlacementMode="Hidden" Width="90"
+                                           Loaded="OnSizeNumberBoxLoaded"
                                            Visibility="{x:Bind ViewModel.SizeValueVisibility, Mode=OneWay}" />
                                 <TextBlock Text="and" Style="{StaticResource FieldLabel}"
                                            Visibility="{x:Bind ViewModel.SizeUpperVisibility, Mode=OneWay}" />
                                 <NumberBox Value="{x:Bind ViewModel.SizeKbUpper, Mode=TwoWay}"
                                            Minimum="0" SpinButtonPlacementMode="Hidden" Width="90"
+                                           Loaded="OnSizeNumberBoxLoaded"
                                            Visibility="{x:Bind ViewModel.SizeUpperVisibility, Mode=OneWay}" />
                                 <TextBlock Text="KB" Style="{StaticResource FieldLabel}"
                                            Visibility="{x:Bind ViewModel.SizeValueVisibility, Mode=OneWay}" />

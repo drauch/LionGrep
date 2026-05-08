@@ -7,6 +7,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Graphics;
 using Windows.Storage;
@@ -501,6 +502,31 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    // ---- Hide the inner X / clear button on size NumberBoxes ----
+    private void OnSizeNumberBoxLoaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is not NumberBox nb) return;
+        HideDeleteButton(nb);
+        // ValueChanged fires when the inner TextBox commits; the DeleteButton state can flip back, so re-collapse.
+        nb.ValueChanged += (_, _) => HideDeleteButton(nb);
+    }
+
+    private static void HideDeleteButton(DependencyObject root)
+    {
+        var count = VisualTreeHelper.GetChildrenCount(root);
+        for (var i = 0; i < count; i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is FrameworkElement { Name: "DeleteButton" } fe)
+            {
+                fe.Visibility = Visibility.Collapsed;
+                fe.Width = 0;
+                continue;
+            }
+            HideDeleteButton(child);
+        }
+    }
+
     // ---- Open with… (Windows shell "Open With" dialog) ----
     private async void OnOpenWithDialog(object sender, RoutedEventArgs e)
     {
@@ -511,21 +537,27 @@ public sealed partial class MainWindow : Window
             if (!await ConfirmBulkAsync($"Open {selected.Count:N0} files with…?",
                 $"This will open {selected.Count:N0} 'Open With' dialogs.")) return;
         }
+        var hwnd = _windowHandle;
         foreach (var f in selected)
         {
-            try
+            var path = f.Path;
+            // Run on a thread-pool task so the UI thread keeps pumping messages while the
+            // shell wires up the picker. Without this the wait-cursor sticks until the next
+            // mouse move, since Windows only refreshes the cursor when the UI thread is free.
+            _ = Task.Run(() =>
             {
-                // ShellExecute with verb "openas" is the supported modern path to the
-                // Windows "Open With" picker. The legacy rundll32 shell32.dll,OpenAs_RunDLL
-                // route is unreliable on Win11.
-                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                try
                 {
-                    FileName = f.Path,
-                    Verb = "openas",
-                    UseShellExecute = true,
-                });
-            }
-            catch { /* ignore */ }
+                    var info = new NativeMethods.OPENASINFO
+                    {
+                        pcszFile = path,
+                        pcszClass = null,
+                        oaifInFlags = NativeMethods.OAIF_EXEC | NativeMethods.OAIF_HIDE_REGISTRATION,
+                    };
+                    NativeMethods.SHOpenWithDialog(hwnd, ref info);
+                }
+                catch { /* ignore */ }
+            });
         }
     }
 
@@ -1055,4 +1087,21 @@ internal static class NativeMethods
         uint shopObjectType,
         [MarshalAs(UnmanagedType.LPWStr)] string pszObjectName,
         [MarshalAs(UnmanagedType.LPWStr)] string? pszPropertyPage);
+
+    // OPENASINFO flags for SHOpenWithDialog.
+    public const uint OAIF_ALLOW_REGISTRATION = 0x01;
+    public const uint OAIF_REGISTER_EXT       = 0x02;
+    public const uint OAIF_EXEC               = 0x04;
+    public const uint OAIF_HIDE_REGISTRATION  = 0x20;
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    public struct OPENASINFO
+    {
+        [MarshalAs(UnmanagedType.LPWStr)] public string pcszFile;
+        [MarshalAs(UnmanagedType.LPWStr)] public string? pcszClass;
+        public uint oaifInFlags;
+    }
+
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode, PreserveSig = false)]
+    public static extern void SHOpenWithDialog(nint hwndParent, ref OPENASINFO oOAI);
 }
