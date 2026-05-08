@@ -39,7 +39,14 @@ public partial class MainViewModel : ObservableObject
         _recents = recents;
         _settingsStore = settingsStore;
         _presetsStore = presetsStore;
-        Results.CollectionChanged += (_, _) => RecomputeReplaceEnabled();
+        Results.CollectionChanged += (_, _) =>
+        {
+            RecomputeReplaceEnabled();
+            // SearchInFound and the two replace commands depend on Results.Count.
+            SearchInFoundFilesCommand.NotifyCanExecuteChanged();
+            ReplaceCommand.NotifyCanExecuteChanged();
+            ReplaceWithBackupsCommand.NotifyCanExecuteChanged();
+        };
         ReloadPresets();
         var settings = _settingsStore.Load();
         if (settings.LastForm is { } last)
@@ -128,18 +135,32 @@ public partial class MainViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(SearchCommand))]
+    [NotifyCanExecuteChangedFor(nameof(InverseSearchCommand))]
+    [NotifyCanExecuteChangedFor(nameof(SearchInFoundFilesCommand))]
     [NotifyCanExecuteChangedFor(nameof(CancelSearchCommand))]
     [NotifyCanExecuteChangedFor(nameof(ReplaceCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ReplaceWithBackupsCommand))]
+    [NotifyCanExecuteChangedFor(nameof(UndoReplaceCommand))]
     [NotifyPropertyChangedFor(nameof(SearchButtonVisibility))]
     [NotifyPropertyChangedFor(nameof(CancelButtonVisibility))]
     private bool _isSearching;
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(SearchCommand))]
+    [NotifyCanExecuteChangedFor(nameof(InverseSearchCommand))]
+    [NotifyCanExecuteChangedFor(nameof(SearchInFoundFilesCommand))]
     [NotifyCanExecuteChangedFor(nameof(ReplaceCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ReplaceWithBackupsCommand))]
+    [NotifyCanExecuteChangedFor(nameof(UndoReplaceCommand))]
     private bool _isReplacing;
 
     [ObservableProperty] private bool _isReplaceEnabled;
+
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(UndoReplaceCommand))]
+    private bool _hasUndoableBackups;
+
+    private readonly List<(string Path, string BackupPath, DateTime BackupMtimeUtc)> _lastBackups = [];
 
     partial void OnIsSearchingChanged(bool value) => RecomputeReplaceEnabled();
     partial void OnIsReplacingChanged(bool value) => RecomputeReplaceEnabled();
@@ -160,30 +181,48 @@ public partial class MainViewModel : ObservableObject
 
     // ---- Commands ----
     [RelayCommand(CanExecute = nameof(CanSearch))]
-    private async Task SearchAsync()
+    private Task SearchAsync() => RunSearchAsync(invert: false, restrictToPaths: null);
+
+    [RelayCommand(CanExecute = nameof(CanSearch))]
+    private Task InverseSearchAsync() => RunSearchAsync(invert: true, restrictToPaths: null);
+
+    [RelayCommand(CanExecute = nameof(CanSearchInFound))]
+    private Task SearchInFoundFilesAsync()
     {
+        // Snapshot current paths before Results is cleared by the search.
+        var paths = Results.Select(r => r.Path).ToList();
+        return RunSearchAsync(invert: false, restrictToPaths: paths);
+    }
+    private bool CanSearchInFound() => !IsSearching && !IsReplacing && Results.Count > 0;
+
+    private async Task RunSearchAsync(bool invert, IReadOnlyList<string>? restrictToPaths)
+    {
+        var isFileList = restrictToPaths is not null;
+
         if (string.IsNullOrWhiteSpace(SearchPattern) && !SearchInNames)
         {
             SetSummary("Provide a search pattern.");
             return;
         }
 
-        var roots = SearchIn
-            .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Where(s => s.Length > 0)
-            .ToList();
-        if (roots.Count == 0)
-        {
-            SetSummary("Provide at least one directory in 'Search in'.");
-            return;
-        }
-
-        // When there's exactly one search root, display each file's directory relative to it.
+        IReadOnlyList<string>? roots = null;
         string? singleRoot = null;
-        if (roots.Count == 1)
+        if (!isFileList)
         {
-            try { singleRoot = System.IO.Path.GetFullPath(roots[0]); }
-            catch { singleRoot = null; }
+            roots = SearchIn
+                .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Where(s => s.Length > 0)
+                .ToList();
+            if (roots.Count == 0)
+            {
+                SetSummary("Provide at least one directory in 'Search in'.");
+                return;
+            }
+            if (roots.Count == 1)
+            {
+                try { singleRoot = System.IO.Path.GetFullPath(roots[0]); }
+                catch { singleRoot = null; }
+            }
         }
 
         OperationStarted?.Invoke(this, EventArgs.Empty);
@@ -201,7 +240,6 @@ public partial class MainViewModel : ObservableObject
         _searchCts = new CancellationTokenSource();
         var ct = _searchCts.Token;
 
-        var request = BuildRequest(roots);
         // SyncProgress runs handler on caller thread (worker), so updating an Interlocked counter is essentially free
         // and avoids flooding the UI dispatcher with one item per file.
         var examinedProgress = new SyncProgress<int>(c => Interlocked.Exchange(ref _examinedCounter, c));
@@ -209,11 +247,17 @@ public partial class MainViewModel : ObservableObject
 
         StartSummaryTimer();
 
+        var searchOptions = BuildSearchOptions() with { Invert = invert };
+
         try
         {
             await Task.Run(() =>
             {
-                foreach (var match in _searcher.Search(request, examinedProgress, rejectedProgress, ct))
+                IEnumerable<FileMatch> matches = isFileList
+                    ? _searcher.SearchFiles(restrictToPaths!, searchOptions, examinedProgress, rejectedProgress, ct)
+                    : _searcher.Search(new SearchRequest(roots!, BuildEnumerationOptions(), searchOptions), examinedProgress, rejectedProgress, ct);
+
+                foreach (var match in matches)
                 {
                     ct.ThrowIfCancellationRequested();
                     var insertion = (int)Interlocked.Increment(ref _matchedCounter) - 1;
@@ -234,7 +278,8 @@ public partial class MainViewModel : ObservableObject
             StopSummaryTimer();
             DrainPendingResults();
             UpdateCountsFromAtomic();
-            SetSummary($"{MatchedFileCount:N0} files, {MatchCount:N0} matches, {RejectedCount:N0} skipped.");
+            var label = invert ? "non-matching files" : (isFileList ? "matches in found files" : "matches");
+            SetSummary($"{MatchedFileCount:N0} files, {MatchCount:N0} {label}, {RejectedCount:N0} skipped.");
             SaveRecents();
         }
         catch (OperationCanceledException)
@@ -313,7 +358,12 @@ public partial class MainViewModel : ObservableObject
     private bool CanCancel() => IsSearching;
 
     [RelayCommand(CanExecute = nameof(CanReplace))]
-    private async Task ReplaceAsync()
+    private Task ReplaceAsync() => DoReplaceAsync(withBackups: false);
+
+    [RelayCommand(CanExecute = nameof(CanReplace))]
+    private Task ReplaceWithBackupsAsync() => DoReplaceAsync(withBackups: true);
+
+    private async Task DoReplaceAsync(bool withBackups)
     {
         if (Results.Count == 0)
         {
@@ -334,11 +384,13 @@ public partial class MainViewModel : ObservableObject
                 Search: BuildSearchOptions(),
                 Replacement: ReplacePattern,
                 PreserveCase: PreserveCase,
-                KeepFileDate: KeepFileDate);
+                KeepFileDate: KeepFileDate,
+                CreateBackup: withBackups);
 
             var totalReplacements = 0;
             var filesChanged = 0;
             var paths = Results.Select(r => r.Path).ToList();
+            var newBackups = new List<(string, string, DateTime)>();
             await Task.Run(() =>
             {
                 foreach (var path in paths)
@@ -350,6 +402,8 @@ public partial class MainViewModel : ObservableObject
                         {
                             filesChanged++;
                             totalReplacements += result.ReplacementCount;
+                            if (result.BackupPath is not null && File.Exists(result.BackupPath))
+                                newBackups.Add((path, result.BackupPath, File.GetLastWriteTimeUtc(result.BackupPath)));
                         }
                     }
                     catch (NotSupportedException) { /* file too large; skip */ }
@@ -358,7 +412,20 @@ public partial class MainViewModel : ObservableObject
                 }
             });
             _recents.Add(RecentsKeyReplacePattern, ReplacePattern);
-            SetSummary($"Replaced {totalReplacements:N0} matches in {filesChanged:N0} files.");
+
+            if (withBackups)
+            {
+                // Each new backup-replace replaces the undo set, so a previous replace's .bak files become orphaned;
+                // they remain on disk for safety but can no longer be undone via the UI.
+                _lastBackups.Clear();
+                _lastBackups.AddRange(newBackups);
+                HasUndoableBackups = _lastBackups.Count > 0;
+            }
+
+            var suffix = withBackups
+                ? $" (backed up {newBackups.Count:N0} file(s) to .bak)"
+                : "";
+            SetSummary($"Replaced {totalReplacements:N0} matches in {filesChanged:N0} files{suffix}.");
         }
         catch (Exception ex)
         {
@@ -371,6 +438,59 @@ public partial class MainViewModel : ObservableObject
     }
 
     private bool CanReplace() => !IsSearching && !IsReplacing && Results.Count > 0;
+
+    [RelayCommand(CanExecute = nameof(CanUndoReplace))]
+    private async Task UndoReplaceAsync()
+    {
+        if (_lastBackups.Count == 0)
+        {
+            SetSummary("Nothing to undo.");
+            return;
+        }
+
+        var keepDate = KeepFileDate;
+        var snapshot = _lastBackups.ToList();
+
+        OperationStarted?.Invoke(this, EventArgs.Empty);
+        IsReplacing = true;
+        var restored = 0;
+        var failed = 0;
+        try
+        {
+            await Task.Run(() =>
+            {
+                foreach (var (path, bak, bakMtime) in snapshot)
+                {
+                    try
+                    {
+                        if (!File.Exists(bak)) { failed++; continue; }
+                        File.Copy(bak, path, overwrite: true);
+                        // Honor "Keep file date when replacing": after restore, the file's mtime should match
+                        // the original (= the backup's mtime) instead of "now".
+                        if (keepDate)
+                            File.SetLastWriteTimeUtc(path, bakMtime);
+                        File.Delete(bak);
+                        restored++;
+                    }
+                    catch { failed++; }
+                }
+            });
+            _lastBackups.Clear();
+            HasUndoableBackups = false;
+            var failSuffix = failed > 0 ? $" ({failed:N0} failed)" : "";
+            SetSummary($"Undo: restored {restored:N0} files from .bak{failSuffix}.");
+        }
+        catch (Exception ex)
+        {
+            SetSummary($"Undo error: {ex.Message}");
+        }
+        finally
+        {
+            IsReplacing = false;
+        }
+    }
+
+    private bool CanUndoReplace() => HasUndoableBackups && !IsSearching && !IsReplacing;
 
     [RelayCommand]
     private void ToggleSearchInExpanded() => IsSearchInExpanded = !IsSearchInExpanded;

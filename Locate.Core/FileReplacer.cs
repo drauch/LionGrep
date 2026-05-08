@@ -29,8 +29,16 @@ public sealed class FileReplacer
         if (count == 0)
             return new ReplaceResult(path, 0);
 
+        string? backupPath = null;
+        if (context.CreateBackup)
+        {
+            backupPath = path + ".bak";
+            // Copy preserves the source's last-write time, which is exactly what Undo needs to restore the original mtime.
+            File.Copy(path, backupPath, overwrite: true);
+        }
+
         WriteAtomic(path, detected.Encoding, output, info, context.KeepFileDate);
-        return new ReplaceResult(path, count);
+        return new ReplaceResult(path, count, backupPath);
     }
 
     private static (string Output, int Count) ProcessText(string text, ILineReplacer replacer, CancellationToken ct)

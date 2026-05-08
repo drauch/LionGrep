@@ -81,8 +81,12 @@ public sealed partial class MainWindow : Window
         var alt = (Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Menu)
                    & Windows.UI.Core.CoreVirtualKeyStates.Down) != 0;
         e.Handled = true;
+        // Ctrl+Alt+Enter is the explicit "replace immediately" bypass — no confirmation dialog.
         if (alt)
-            _ = ConfirmAndReplaceAsync();
+        {
+            if (ViewModel.ReplaceCommand.CanExecute(null))
+                ViewModel.ReplaceCommand.Execute(null);
+        }
         else if (ViewModel.SearchCommand.CanExecute(null))
             ViewModel.SearchCommand.Execute(null);
     }
@@ -735,10 +739,12 @@ public sealed partial class MainWindow : Window
             ViewModel.SearchCommand.Execute(null);
     }
 
-    private async void OnCtrlAltEnterAccelerator(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    private void OnCtrlAltEnterAccelerator(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
     {
         args.Handled = true;
-        await ConfirmAndReplaceAsync();
+        // Ctrl+Alt+Enter bypasses the 3-way confirmation dialog and replaces immediately (no .bak).
+        if (ViewModel.ReplaceCommand.CanExecute(null))
+            ViewModel.ReplaceCommand.Execute(null);
     }
 
     private void OnEscapeAccelerator(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
@@ -767,35 +773,26 @@ public sealed partial class MainWindow : Window
     {
         if (!ViewModel.IsReplaceEnabled) return;
 
-        var settings = _settingsStore.Load();
-        if (!settings.DontWarnWhenReplacing)
+        var dialog = new ContentDialog
         {
-            var dontAsk = new CheckBox { Content = "Don't warn me again", Margin = new Thickness(0, 12, 0, 0) };
-            var content = new StackPanel();
-            content.Children.Add(new TextBlock
-            {
-                Text = $"Replace will rewrite {ViewModel.Results.Count:N0} file(s) on disk. This cannot be undone.",
-                TextWrapping = TextWrapping.Wrap,
-            });
-            content.Children.Add(dontAsk);
-            var dialog = new ContentDialog
-            {
-                XamlRoot = Content.XamlRoot,
-                Title = "Confirm replace",
-                Content = content,
-                PrimaryButtonText = "Replace",
-                CloseButtonText = "Cancel",
-                DefaultButton = ContentDialogButton.Close,
-            };
-            if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
-            if (dontAsk.IsChecked == true)
-            {
-                settings.DontWarnWhenReplacing = true;
-                _settingsStore.Save(settings);
-            }
-        }
-
-        await ViewModel.ReplaceCommand.ExecuteAsync(null);
+            XamlRoot = Content.XamlRoot,
+            Title = "Confirm replace",
+            Content = $"Replace will rewrite {ViewModel.Results.Count:N0} file(s) on disk."
+                    + Environment.NewLine + Environment.NewLine
+                    + "• Replace with backups: writes a .bak copy next to each modified file (use Undo to restore)."
+                    + Environment.NewLine
+                    + "• Replace: overwrites in place. Cannot be undone.",
+            PrimaryButtonText = "Replace with backups",
+            SecondaryButtonText = "Replace",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Close,
+        };
+        var result = await dialog.ShowAsync();
+        if (result == ContentDialogResult.Primary)
+            await ViewModel.ReplaceWithBackupsCommand.ExecuteAsync(null);
+        else if (result == ContentDialogResult.Secondary)
+            await ViewModel.ReplaceCommand.ExecuteAsync(null);
+        // Close (Cancel) → do nothing.
     }
 
     // ---- Column sort ----

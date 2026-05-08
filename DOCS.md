@@ -72,13 +72,36 @@ Patterns are .NET regular expressions, compiled with `RegexOptions.CultureInvari
 ### Locale
 Locate **never** uses culture-aware comparison. This is a design decision, deliberate, matching ripgrep's behaviour and avoiding surprises like Turkish dotless-i or German ß ↔ ss equivalence. It's also dramatically faster than culture-aware comparison.
 
+### Search variants (Search button dropdown)
+
+Click the chevron on the **Search** split button:
+
+- **Inverse search** — runs the same enumeration + filter pipeline, but yields files that *don't* match the pattern. Files that get **Skip-binary**'d are excluded from inverse results too — they're "unknown", not "no match". Inverse rows have no per-line matches and aren't expandable.
+- **Search in currently found files** — re-runs using **only the What inputs** (Search for, Replace with, regex/case toggles). The current result set is the file list; the **Where** and **Filter** groups are ignored entirely. Disabled until you have results.
+
 ---
 
 ## 4. Replace
 
 Replace rewrites every matched file on disk. Atomic via temp-file + `File.Replace`, so a failure can't corrupt the original. The current limit is **4 MiB per file** (replace-side); larger files throw `NotSupportedException` and are skipped. (Streamed replace for larger files is a v1.1 item.)
 
-You'll get a confirmation dialog the first time per session, with a "Don't warn me again" checkbox that persists in settings.
+### 4.1 Confirmation dialog (3-way)
+
+Clicking the **Replace…** button always opens a confirmation dialog with three options:
+
+- **Replace with backups** *(primary)* — copies each modified file to `<filename>.bak` next to the original before overwriting. The full set of `.bak` files becomes the input for **Undo** (next section). Each fresh "Replace with backups" run resets the undo set; older `.bak` files remain on disk as orphans (not auto-deleted, for safety) but are no longer reachable via Undo.
+- **Replace** *(secondary)* — overwrites in place. **Cannot be undone.**
+- **Cancel** *(default)* — Esc / Enter on the dialog cancels.
+
+**Bypass for power users:** `Ctrl+Alt+Enter` always replaces immediately, no dialog, **no backup**. Use this when you've already audited the result list and want to commit the rewrite without further prompts.
+
+### 4.2 Undo
+
+The **Undo** button (next to **Replace…**) restores files from the most recent **Replace with backups** run. It iterates the tracked `<path, .bak>` pairs, copies each `.bak` over its original, then deletes the `.bak`. If **Keep file date when replacing** is on, the restored file's mtime is set back to the `.bak`'s mtime (which is the original pre-replace mtime); otherwise, the OS sets it to "now".
+
+Undo is disabled until a successful **Replace with backups** has produced at least one backup. Files where the `.bak` is missing at undo time are reported as failed and skipped.
+
+### 4.3 Other behavior
 
 **Encoding round-trip:** Locate detects encoding via BOM (UTF-8/16 LE/16 BE/32 LE/32 BE). No BOM falls back to UTF-8. Replace writes back with the **same** encoding it detected, including the BOM if there was one.
 
@@ -160,8 +183,8 @@ When the window narrows, columns are hidden in this priority order (most aggress
 
 Multi-select via Ctrl/Shift-click as in any ListView. Right-click on a row that isn't part of the current selection narrows the selection to just that row before opening the context menu (so you don't accidentally act on the entire list).
 
-- **Open with editor** — runs the configured editor command for each selected file. If no editor is configured (or the launch fails), an error dialog appears. Opening more than 5 files prompts a confirmation first.
-- **Open containing folder** — opens Explorer with each selected file pre-selected (`/select,...`). Same 5-file confirmation guard.
+- **Open with editor** — runs the configured editor command for each selected file. If no editor is configured (or the launch fails), an error dialog appears. Multi-select (more than one file) always prompts a confirmation first.
+- **Open containing folder** — opens Explorer with each selected file pre-selected (`/select,...`). Multi-select always prompts a confirmation first.
 - **Copy path(s) to clipboard**
 - **Copy filename(s) to clipboard**
 - **Copy line(s) to clipboard** — the matched line text(s).
@@ -217,7 +240,6 @@ The form's last successful state is also auto-restored on next launch (a "last f
 Opened from the gear icon in the title bar.
 
 - **External editor** — command line for opening a file at a given line/column. Browse picks an `.exe` and pre-fills a sensible template like `"C:\…\code.exe" "%path%":%line%:%column%`. **Quote `%path%`** if your paths might contain spaces.
-- **Don't warn when replacing** — suppresses the Replace confirmation dialog. Also set automatically when you tick "Don't warn me again" in the dialog itself.
 - **Remember recently used values between sessions** — when ticked (default), the recents dropdown for each input persists in the registry. Untick to disable: existing history is wiped on Save and no new entries are recorded.
 - **Presets** — list view on the left, details panel on the right. Add / Remove buttons. Each preset has a name, optional hotkey, and three apply-group checkboxes. Save persists everything; Close also saves.
 - **Reset everything…** (footer, left side) — wipes the entire `HKCU\Software\Locate` registry hive: settings, presets, recents, and the last-form snapshot. Confirmation dialog protects against accidents; the action is irreversible.
@@ -231,7 +253,7 @@ All settings persist under `HKCU\Software\Locate`.
 | Hotkey | Action |
 |---|---|
 | **Ctrl+Enter** | Run search (works even when focus is in a multi-line input) |
-| **Ctrl+Alt+Enter** | Run replace (with confirmation unless suppressed) |
+| **Ctrl+Alt+Enter** | Replace **immediately** — bypasses the 3-way confirmation dialog. No backup is created. |
 | **Escape** | Cancel the running search **and** restore the form panel. Pressing Escape repeatedly is idempotent — the form returns to the same cached natural height each time. |
 | **Enter** | Default action for the focused control (newline in multi-line Search-in, etc.) |
 | **F2** etc. | Whatever you've assigned to a preset |

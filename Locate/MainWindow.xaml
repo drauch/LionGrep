@@ -394,8 +394,11 @@
                         </SplitButton.Content>
                         <SplitButton.Flyout>
                             <MenuFlyout>
-                                <MenuFlyoutItem Text="Inverse search (TODO)" IsEnabled="False" />
-                                <MenuFlyoutItem Text="Search in currently found files (TODO)" IsEnabled="False" />
+                                <MenuFlyoutItem Text="Inverse search" Command="{x:Bind ViewModel.InverseSearchCommand}"
+                                                ToolTipService.ToolTip="List files that do NOT match the pattern (binaries skipped)" />
+                                <MenuFlyoutItem Text="Search in currently found files"
+                                                Command="{x:Bind ViewModel.SearchInFoundFilesCommand}"
+                                                ToolTipService.ToolTip="Re-run search using only the What inputs, restricted to the current result set (filters ignored)" />
                             </MenuFlyout>
                         </SplitButton.Flyout>
                     </SplitButton>
@@ -407,10 +410,18 @@
                         </StackPanel>
                     </Button>
                     <Button Click="OnReplaceClicked"
-                            IsEnabled="{x:Bind ViewModel.IsReplaceEnabled, Mode=OneWay}">
+                            IsEnabled="{x:Bind ViewModel.IsReplaceEnabled, Mode=OneWay}"
+                            ToolTipService.ToolTip="Choose Replace, Replace with backups (.bak), or Cancel">
                         <StackPanel Orientation="Horizontal" Spacing="4">
                             <FontIcon Glyph="&#xE74E;" FontSize="12" />
-                            <TextBlock Text="Replace" />
+                            <TextBlock Text="Replace…" />
+                        </StackPanel>
+                    </Button>
+                    <Button Command="{x:Bind ViewModel.UndoReplaceCommand}"
+                            ToolTipService.ToolTip="Undo the last Replace-with-backups by restoring the .bak files">
+                        <StackPanel Orientation="Horizontal" Spacing="4">
+                            <FontIcon Glyph="&#xE7A7;" FontSize="12" />
+                            <TextBlock Text="Undo" />
                         </StackPanel>
                     </Button>
                     <DropDownButton x:Name="PresetsButton">

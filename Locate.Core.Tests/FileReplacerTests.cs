@@ -202,4 +202,48 @@ public class FileReplacerTests
         Assert.That(() => _replacer.Replace(path, Ctx("x", "y")),
             Throws.TypeOf<NotSupportedException>());
     }
+
+    [Test]
+    public void CreateBackup_WritesBakWithOriginalContent_AndReturnsItsPath()
+    {
+        var original = "alpha bravo alpha\n";
+        var path = Write("a.txt", Encoding.UTF8.GetBytes(original));
+        var ctx = Ctx("alpha", "X") with { CreateBackup = true };
+
+        var result = _replacer.Replace(path, ctx);
+
+        Assert.That(result.ReplacementCount, Is.EqualTo(2));
+        Assert.That(result.BackupPath, Is.EqualTo(path + ".bak"));
+        Assert.That(File.Exists(result.BackupPath), Is.True);
+        Assert.That(File.ReadAllText(result.BackupPath!), Is.EqualTo(original));
+        Assert.That(File.ReadAllText(path), Is.EqualTo("X bravo X\n"));
+    }
+
+    [Test]
+    public void CreateBackup_WithNoMatches_DoesNotCreateBakFile()
+    {
+        var path = Write("b.txt", "no relevant content here\n"u8.ToArray());
+        var ctx = Ctx("missing", "X") with { CreateBackup = true };
+
+        var result = _replacer.Replace(path, ctx);
+
+        Assert.That(result.ReplacementCount, Is.EqualTo(0));
+        Assert.That(result.BackupPath, Is.Null);
+        Assert.That(File.Exists(path + ".bak"), Is.False);
+    }
+
+    [Test]
+    public void CreateBackup_PreservesOriginalMtime_OnTheBakFile()
+    {
+        var path = Write("c.txt", "needle here\n"u8.ToArray());
+        var stamp = new DateTime(2020, 1, 2, 3, 4, 5, DateTimeKind.Utc);
+        File.SetLastWriteTimeUtc(path, stamp);
+        var ctx = Ctx("needle", "X") with { CreateBackup = true };
+
+        var result = _replacer.Replace(path, ctx);
+
+        Assert.That(result.BackupPath, Is.Not.Null);
+        // The .bak's mtime should equal the pre-replace mtime so Undo can restore it.
+        Assert.That(File.GetLastWriteTimeUtc(result.BackupPath!), Is.EqualTo(stamp));
+    }
 }

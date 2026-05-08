@@ -133,4 +133,68 @@ public class SearcherTests
 
         Assert.That(results, Is.Empty);
     }
+
+    [Test]
+    public void Invert_YieldsFilesWithoutMatches()
+    {
+        var matching = Touch("matches.txt", "needle in haystack\n");
+        var nonMatching1 = Touch("plain.txt", "nothing relevant\n");
+        var nonMatching2 = Touch("sub/other.txt", "still nothing\n");
+
+        var results = _searcher.Search(new SearchRequest(
+            Roots: [_root],
+            Enumeration: new FileEnumerationOptions(),
+            Search: new SearchOptions { Pattern = "needle", Invert = true })).ToList();
+
+        Assert.That(results.Select(r => r.Path), Is.EquivalentTo(new[] { nonMatching1, nonMatching2 }));
+        // Inverse hits carry no per-line / per-name matches.
+        Assert.That(results, Has.All.With.Property(nameof(FileMatch.ContentMatches)).Empty);
+        Assert.That(results, Has.All.With.Property(nameof(FileMatch.NameMatches)).Empty);
+        // The matching file is excluded from inverse results.
+        Assert.That(results.Select(r => r.Path), Does.Not.Contain(matching));
+    }
+
+    [Test]
+    public void Invert_SkipsBinariesWhenSkipBinaryFilesIsOn()
+    {
+        Touch("text.txt", "harmless content\n");
+        // NUL byte in the first kibibyte triggers the binary heuristic.
+        var binPath = Path.Combine(_root, "blob.bin");
+        File.WriteAllBytes(binPath, [0x00, 0x01, 0x02, 0x03]);
+
+        var results = _searcher.Search(new SearchRequest(
+            Roots: [_root],
+            Enumeration: new FileEnumerationOptions(),
+            Search: new SearchOptions { Pattern = "needle", Invert = true, SkipBinaryFiles = true })).ToList();
+
+        Assert.That(results.Select(r => Path.GetFileName(r.Path)), Is.EquivalentTo(new[] { "text.txt" }));
+    }
+
+    [Test]
+    public void SearchFiles_RestrictsToGivenPaths_IgnoringEnumerationFilters()
+    {
+        var a = Touch("a.txt", "needle here\n");
+        var b = Touch("b.txt", "needle there too\n");
+        Touch("c.txt", "needle but not in input list\n");
+
+        var results = _searcher.SearchFiles(
+            paths: new[] { a, b },
+            options: new SearchOptions { Pattern = "needle" }).ToList();
+
+        Assert.That(results.Select(r => r.Path), Is.EquivalentTo(new[] { a, b }));
+        Assert.That(results, Has.All.With.Property(nameof(FileMatch.ContentMatches)).Not.Empty);
+    }
+
+    [Test]
+    public void SearchFiles_Invert_YieldsOnlyNonMatchingPathsFromInput()
+    {
+        var a = Touch("a.txt", "has needle\n");
+        var b = Touch("b.txt", "no n33dle\n");
+
+        var results = _searcher.SearchFiles(
+            paths: new[] { a, b },
+            options: new SearchOptions { Pattern = "needle", Invert = true }).ToList();
+
+        Assert.That(results.Select(r => r.Path), Is.EquivalentTo(new[] { b }));
+    }
 }

@@ -39,10 +39,8 @@
             </Grid>
             <TextBlock Opacity="0.7" FontSize="11"
                        Text="Placeholders: %path%, %line%, %column%. Quote %path% if it may contain spaces." />
-            <CheckBox Content="Don't warn when replacing"
-                      IsChecked="{x:Bind ViewModel.DontWarnWhenReplacing, Mode=TwoWay}" Margin="0,4,0,0" />
             <CheckBox Content="Remember recently used values between sessions"
-                      IsChecked="{x:Bind ViewModel.RememberRecentValues, Mode=TwoWay}" />
+                      IsChecked="{x:Bind ViewModel.RememberRecentValues, Mode=TwoWay}" Margin="0,4,0,0" />
         </StackPanel>
 
         <!-- Presets -->
