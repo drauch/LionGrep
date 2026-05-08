@@ -1,0 +1,96 @@
+using System.Text;
+
+namespace Locate.Core;
+
+public sealed class FileReplacer
+{
+    public const long InMemoryThresholdBytes = 4L * 1024 * 1024;
+
+    public ReplaceResult Replace(string path, ReplacementContext context, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(path);
+        ArgumentNullException.ThrowIfNull(context);
+
+        var info = new FileInfo(path);
+        if (!info.Exists || info.Length == 0)
+            return new ReplaceResult(path, 0);
+        if (info.Length > InMemoryThresholdBytes)
+            throw new NotSupportedException(
+                $"Replace currently supports files up to {InMemoryThresholdBytes / 1024 / 1024} MiB (path: {path}, size: {info.Length}). Streaming replace for larger files is a v1.1 feature.");
+
+        var bytes = File.ReadAllBytes(path);
+        var detected = EncodingDetection.Detect(bytes);
+        var contentBytes = bytes.AsSpan(detected.BomLength);
+        var text = detected.Encoding.GetString(contentBytes);
+
+        var replacer = LineReplacerFactory.Create(context.Search, context.Replacement, context.PreserveCase);
+        var (output, count) = ProcessText(text, replacer, ct);
+
+        if (count == 0)
+            return new ReplaceResult(path, 0);
+
+        WriteAtomic(path, detected.Encoding, output, info, context.KeepFileDate);
+        return new ReplaceResult(path, count);
+    }
+
+    private static (string Output, int Count) ProcessText(string text, ILineReplacer replacer, CancellationToken ct)
+    {
+        var output = new StringBuilder(text.Length);
+        var count = 0;
+        var pos = 0;
+
+        while (pos <= text.Length)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            var nl = text.IndexOf('\n', pos);
+            var lineEnd = nl < 0 ? text.Length : nl;
+            var contentEnd = lineEnd;
+            var hasCr = false;
+            if (contentEnd > pos && text[contentEnd - 1] == '\r')
+            {
+                contentEnd--;
+                hasCr = true;
+            }
+
+            count += replacer.ReplaceLine(text.AsSpan(pos, contentEnd - pos), output);
+
+            if (hasCr) output.Append('\r');
+            if (nl >= 0) output.Append('\n');
+
+            if (nl < 0) break;
+            pos = nl + 1;
+        }
+
+        return (output.ToString(), count);
+    }
+
+    private static void WriteAtomic(string path, Encoding encoding, string output, FileInfo originalInfo, bool keepFileDate)
+    {
+        var dir = Path.GetDirectoryName(path)!;
+        var temp = Path.Combine(dir, $".{Path.GetFileName(path)}.{Guid.NewGuid():N}.tmp");
+
+        var originalMtime = originalInfo.LastWriteTimeUtc;
+
+        try
+        {
+            using (var fs = new FileStream(temp, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            {
+                var preamble = encoding.GetPreamble();
+                if (preamble.Length > 0)
+                    fs.Write(preamble);
+                fs.Write(encoding.GetBytes(output));
+            }
+
+            File.Replace(temp, path, destinationBackupFileName: null);
+        }
+        catch
+        {
+            try { File.Delete(temp); } catch { }
+            throw;
+        }
+
+        if (keepFileDate)
+            File.SetLastWriteTimeUtc(path, originalMtime);
+    }
+}

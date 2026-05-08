@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ContentDialog
+    x:Class="Locate.AboutDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:Locate"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    Title="About Locate"
+    PrimaryButtonText="Close"
+    DefaultButton="Primary">
+
+    <StackPanel Spacing="8" MinWidth="360">
+        <TextBlock Text="Locate" FontSize="22" FontWeight="SemiBold" />
+        <TextBlock x:Name="VersionText" Text="Version 0.1.0 (preview)" Opacity="0.7" />
+        <TextBlock TextWrapping="Wrap"
+                   Text="A UI-powered grep-like search tool for Windows. Built on .NET 10 and WinUI 3." />
+    </StackPanel>
+</ContentDialog>

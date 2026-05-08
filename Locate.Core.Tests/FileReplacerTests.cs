@@ -1,0 +1,205 @@
+using System.Text;
+using NUnit.Framework;
+
+namespace Locate.Core.Tests;
+
+public class FileReplacerTests
+{
+    private string _tempDir = string.Empty;
+    private FileReplacer _replacer = null!;
+
+    [SetUp]
+    public void SetUp()
+    {
+        _tempDir = Path.Combine(Path.GetTempPath(), "locate-replace-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(_tempDir);
+        _replacer = new FileReplacer();
+    }
+
+    [TearDown]
+    public void TearDown()
+    {
+        if (Directory.Exists(_tempDir))
+            Directory.Delete(_tempDir, recursive: true);
+    }
+
+    private string Write(string name, byte[] bytes)
+    {
+        var path = Path.Combine(_tempDir, name);
+        File.WriteAllBytes(path, bytes);
+        return path;
+    }
+
+    private static ReplacementContext Ctx(string pattern, string replacement, bool useRegex = false, bool preserveCase = false, bool keepFileDate = false, bool wholeWord = false, bool caseSensitive = true) =>
+        new(new SearchOptions
+        {
+            Pattern = pattern,
+            UseRegex = useRegex,
+            WholeWord = wholeWord,
+            CaseSensitive = caseSensitive,
+        }, replacement, preserveCase, keepFileDate);
+
+    [Test]
+    public void NoMatches_FileUnchanged_AndZeroCount()
+    {
+        var path = Write("a.txt", "no match here\n"u8.ToArray());
+        var beforeMtime = File.GetLastWriteTimeUtc(path);
+
+        var result = _replacer.Replace(path, Ctx("missing", "X"));
+
+        Assert.That(result.ReplacementCount, Is.EqualTo(0));
+        Assert.That(File.ReadAllText(path), Is.EqualTo("no match here\n"));
+        Assert.That(File.GetLastWriteTimeUtc(path), Is.EqualTo(beforeMtime));
+    }
+
+    [Test]
+    public void EmptyFile_NoOp()
+    {
+        var path = Write("empty.txt", []);
+        var result = _replacer.Replace(path, Ctx("x", "y"));
+        Assert.That(result.ReplacementCount, Is.EqualTo(0));
+    }
+
+    [Test]
+    public void NonExistentFile_NoOp()
+    {
+        var result = _replacer.Replace(Path.Combine(_tempDir, "nope.txt"), Ctx("x", "y"));
+        Assert.That(result.ReplacementCount, Is.EqualTo(0));
+    }
+
+    [Test]
+    public void SimpleReplace_WritesNewContent()
+    {
+        var path = Write("a.txt", "hello fox\nbye fox\n"u8.ToArray());
+
+        var result = _replacer.Replace(path, Ctx("fox", "cat"));
+
+        Assert.That(result.ReplacementCount, Is.EqualTo(2));
+        Assert.That(File.ReadAllText(path), Is.EqualTo("hello cat\nbye cat\n"));
+    }
+
+    [Test]
+    public void CrlfLineEndings_Preserved()
+    {
+        var path = Write("a.txt", "fox\r\nfox\r\n"u8.ToArray());
+
+        _replacer.Replace(path, Ctx("fox", "cat"));
+
+        Assert.That(File.ReadAllBytes(path), Is.EqualTo("cat\r\ncat\r\n"u8.ToArray()));
+    }
+
+    [Test]
+    public void MixedLineEndings_PreservedPerLine()
+    {
+        var path = Write("a.txt", "fox\r\nfox\nfox"u8.ToArray());
+
+        _replacer.Replace(path, Ctx("fox", "cat"));
+
+        Assert.That(File.ReadAllBytes(path), Is.EqualTo("cat\r\ncat\ncat"u8.ToArray()));
+    }
+
+    [Test]
+    public void Utf8Bom_RoundTrips()
+    {
+        var bom = new byte[] { 0xEF, 0xBB, 0xBF };
+        var path = Write("a.txt", bom.Concat("fox\n"u8.ToArray()).ToArray());
+
+        _replacer.Replace(path, Ctx("fox", "cat"));
+
+        var bytes = File.ReadAllBytes(path);
+        Assert.That(bytes[..3], Is.EqualTo(bom));
+        Assert.That(Encoding.UTF8.GetString(bytes, 3, bytes.Length - 3), Is.EqualTo("cat\n"));
+    }
+
+    [Test]
+    public void Utf16Le_RoundTripsWithBom()
+    {
+        var bytes = Encoding.Unicode.GetPreamble().Concat(Encoding.Unicode.GetBytes("fox\nfox\n")).ToArray();
+        var path = Write("a.txt", bytes);
+
+        _replacer.Replace(path, Ctx("fox", "cat"));
+
+        var roundTripped = File.ReadAllBytes(path);
+        Assert.That(roundTripped[..2], Is.EqualTo(Encoding.Unicode.GetPreamble()));
+        Assert.That(Encoding.Unicode.GetString(roundTripped, 2, roundTripped.Length - 2), Is.EqualTo("cat\ncat\n"));
+    }
+
+    [Test]
+    public void PreserveCase_Mixed_WrittenWithReshapedReplacements()
+    {
+        var path = Write("a.txt", "foo Foo FOO\n"u8.ToArray());
+
+        _replacer.Replace(path, Ctx("foo", "bar", preserveCase: true, caseSensitive: false));
+
+        Assert.That(File.ReadAllText(path), Is.EqualTo("bar Bar BAR\n"));
+    }
+
+    [Test]
+    public void RegexBackref_AppliedToFile()
+    {
+        var path = Write("a.txt", "log id=42 ok\nlog id=7 fail\n"u8.ToArray());
+
+        var result = _replacer.Replace(path, Ctx(@"id=(\d+)", "ID:$1", useRegex: true));
+
+        Assert.That(result.ReplacementCount, Is.EqualTo(2));
+        Assert.That(File.ReadAllText(path), Is.EqualTo("log ID:42 ok\nlog ID:7 fail\n"));
+    }
+
+    [Test]
+    public void KeepFileDate_RestoresOriginalMtime()
+    {
+        var path = Write("a.txt", "fox\n"u8.ToArray());
+        var original = DateTime.UtcNow.AddDays(-30);
+        File.SetLastWriteTimeUtc(path, original);
+
+        _replacer.Replace(path, Ctx("fox", "cat", keepFileDate: true));
+
+        var after = File.GetLastWriteTimeUtc(path);
+        Assert.That(after, Is.EqualTo(original).Within(TimeSpan.FromSeconds(2)));
+        Assert.That(File.ReadAllText(path), Is.EqualTo("cat\n"));
+    }
+
+    [Test]
+    public void KeepFileDateOff_BumpsMtime()
+    {
+        var path = Write("a.txt", "fox\n"u8.ToArray());
+        var original = DateTime.UtcNow.AddDays(-30);
+        File.SetLastWriteTimeUtc(path, original);
+
+        _replacer.Replace(path, Ctx("fox", "cat", keepFileDate: false));
+
+        Assert.That(File.GetLastWriteTimeUtc(path), Is.GreaterThan(original.AddMinutes(1)));
+    }
+
+    [Test]
+    public void EmptyReplacement_DeletesMatches()
+    {
+        var path = Write("a.txt", "axbxc\n"u8.ToArray());
+
+        var result = _replacer.Replace(path, Ctx("x", ""));
+
+        Assert.That(result.ReplacementCount, Is.EqualTo(2));
+        Assert.That(File.ReadAllText(path), Is.EqualTo("abc\n"));
+    }
+
+    [Test]
+    public void WholeWord_OnlyReplacesWholeWords()
+    {
+        var path = Write("a.txt", "cat catalog cat\n"u8.ToArray());
+
+        _replacer.Replace(path, Ctx("cat", "dog", wholeWord: true));
+
+        Assert.That(File.ReadAllText(path), Is.EqualTo("dog catalog dog\n"));
+    }
+
+    [Test]
+    public void TooLargeFile_Throws()
+    {
+        var path = Path.Combine(_tempDir, "big.txt");
+        using (var fs = new FileStream(path, FileMode.CreateNew))
+            fs.SetLength(FileReplacer.InMemoryThresholdBytes + 1);
+
+        Assert.That(() => _replacer.Replace(path, Ctx("x", "y")),
+            Throws.TypeOf<NotSupportedException>());
+    }
+}
