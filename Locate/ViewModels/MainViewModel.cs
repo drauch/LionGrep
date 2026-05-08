@@ -32,6 +32,15 @@ public partial class MainViewModel : ObservableObject
         _settingsStore = settingsStore;
         _presetsStore = presetsStore;
         ReloadPresets();
+        var settings = _settingsStore.Load();
+        if (settings.LastForm is { } last)
+        {
+            // LastForm captures every group, so apply with all-true regardless of stored flags.
+            last.ApplyWhere = true;
+            last.ApplyWhat = true;
+            last.ApplyFilter = true;
+            ApplyPreset(last);
+        }
     }
 
     public RecentsStore Recents => _recents;
@@ -273,6 +282,38 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private void ToggleSearchInExpanded() => IsSearchInExpanded = !IsSearchInExpanded;
 
+    [RelayCommand]
+    private void ResetFilters()
+    {
+        FileNames = "";
+        FileNamesRegex = false;
+        ExcludePaths = "";
+        ExcludePathsRegex = false;
+        SizeModeIndex = 0;
+        SizeKb = 256;
+        SizeKbUpper = 1024;
+        DateModeIndex = 0;
+        DateFrom = null;
+        DateTo = null;
+        IncludeSubfolders = true;
+        IncludeSystem = false;
+        IncludeHidden = false;
+        FollowSymlinks = false;
+        SkipBinaryFiles = true;
+    }
+
+    private void SaveLastForm()
+    {
+        var snapshot = SnapshotAsPreset("__last__");
+        snapshot.ApplyWhere = true;
+        snapshot.ApplyWhat = true;
+        snapshot.ApplyFilter = true;
+
+        var settings = _settingsStore.Load();
+        settings.LastForm = snapshot;
+        _settingsStore.Save(settings);
+    }
+
     /// <summary>Sets IsExpanded on every result, in dispatcher batches so the UI thread stays responsive on large lists.</summary>
     public async Task ExpandAllAsync(bool expand)
     {
@@ -339,6 +380,7 @@ public partial class MainViewModel : ObservableObject
         _recents.Add(RecentsKeySearchPattern, SearchPattern);
         _recents.Add(RecentsKeyFileNames, FileNames);
         _recents.Add(RecentsKeyExcludePaths, ExcludePaths);
+        SaveLastForm();
     }
 
     // ---- Presets ----

@@ -4,9 +4,9 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="using:CommunityToolkit.WinUI.Controls"
-    xmlns:primitives="using:Microsoft.UI.Xaml.Controls.Primitives"
     xmlns:vm="using:Locate.ViewModels"
     xmlns:models="using:Locate.Models"
+    xmlns:lc="using:Locate.Controls"
     xmlns:local="using:Locate"
     Title="Locate">
 
@@ -19,11 +19,13 @@
             <RowDefinition Height="32" />
             <RowDefinition x:Name="FormRow" Height="*" MinHeight="0" />
             <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" MinHeight="120" />
         </Grid.RowDefinitions>
 
         <Grid.Resources>
+            <x:Double x:Key="CheckBoxBackgroundSize">14</x:Double>
+            <x:Double x:Key="CheckBoxCheckGlyphSize">12</x:Double>
+
             <Style x:Key="SectionHeader" TargetType="TextBlock">
                 <Setter Property="FontWeight" Value="SemiBold" />
                 <Setter Property="FontSize" Value="11" />
@@ -38,7 +40,7 @@
             <Style x:Key="CompactCheckBox" TargetType="CheckBox">
                 <Setter Property="FontSize" Value="12" />
                 <Setter Property="MinHeight" Value="0" />
-                <Setter Property="Padding" Value="4,2,0,2" />
+                <Setter Property="Padding" Value="6,1,0,1" />
             </Style>
             <Style x:Key="ToolIconButton" TargetType="Button">
                 <Setter Property="Background" Value="Transparent" />
@@ -51,7 +53,13 @@
                 <Setter Property="Padding" Value="6,4" />
                 <Setter Property="MinWidth" Value="0" />
             </Style>
-            <Style x:Key="ColumnResizer" TargetType="primitives:Thumb">
+            <Style x:Key="SmallButton" TargetType="Button">
+                <Setter Property="FontSize" Value="11" />
+                <Setter Property="Padding" Value="6,2" />
+                <Setter Property="MinWidth" Value="0" />
+                <Setter Property="MinHeight" Value="0" />
+            </Style>
+            <Style x:Key="ColumnResizer" TargetType="lc:ColumnResizer">
                 <Setter Property="Background" Value="Transparent" />
                 <Setter Property="Width" Value="4" />
                 <Setter Property="HorizontalAlignment" Value="Stretch" />
@@ -59,7 +67,7 @@
             </Style>
         </Grid.Resources>
 
-        <!-- Custom title bar -->
+        <!-- Title bar -->
         <Grid x:Name="AppTitleBar" Grid.Row="0" Background="Transparent">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
@@ -79,245 +87,268 @@
             </StackPanel>
         </Grid>
 
-        <!-- Form -->
-        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="6,2,6,2">
-            <StackPanel Spacing="2">
+        <!-- Form area: content scroll + bottom-right action bar -->
+        <Grid Grid.Row="1">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
 
-                <!-- WHERE -->
-                <TextBlock Text="WHERE" Style="{StaticResource SectionHeader}" />
-                <Grid ColumnSpacing="6" RowSpacing="3">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="80" />
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Text="Search in:" Style="{StaticResource FieldLabel}" VerticalAlignment="Top" Margin="0,4,0,0" />
-                    <TextBox x:Name="SearchInBox" Grid.Column="1"
-                             Text="{x:Bind ViewModel.SearchIn, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                             AcceptsReturn="True" TextWrapping="Wrap"
-                             PlaceholderText="One directory per line, or click Browse"
-                             Height="{x:Bind ViewModel.SearchInBoxHeight, Mode=OneWay}"
-                             FontSize="12" />
-                    <ToggleButton Grid.Column="2" VerticalAlignment="Top"
-                                  IsChecked="{x:Bind ViewModel.IsSearchInExpanded, Mode=TwoWay}"
-                                  Padding="6,4" MinWidth="0"
-                                  ToolTipService.ToolTip="Expand / collapse">
-                        <FontIcon Glyph="&#xE740;" FontSize="10" />
-                    </ToggleButton>
-                    <Button Grid.Column="3" VerticalAlignment="Top"
-                            Style="{StaticResource RecentsButton}" Click="OnSearchInRecentsClicked"
-                            ToolTipService.ToolTip="Recent">
-                        <FontIcon Glyph="&#xE823;" FontSize="12" />
-                    </Button>
-                    <Button Grid.Column="4" VerticalAlignment="Top" Content="Browse…" Click="OnBrowseClicked" />
-                </Grid>
+            <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto" Padding="6,2,6,2">
+                <StackPanel Spacing="2">
 
-                <!-- WHAT -->
-                <TextBlock Text="WHAT" Style="{StaticResource SectionHeader}" />
-                <Grid ColumnSpacing="6" RowSpacing="3">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="80" />
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                    </Grid.RowDefinitions>
-
-                    <TextBlock Text="Search for:" Style="{StaticResource FieldLabel}" Grid.Row="0" />
-                    <TextBox Grid.Row="0" Grid.Column="1"
-                             Text="{x:Bind ViewModel.SearchPattern, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                             PlaceholderText="Pattern (text or regex)" FontSize="12" />
-                    <Button Grid.Row="0" Grid.Column="2" Style="{StaticResource RecentsButton}" Click="OnSearchPatternRecentsClicked">
-                        <FontIcon Glyph="&#xE823;" FontSize="12" />
-                    </Button>
-
-                    <TextBlock Text="Replace with:" Style="{StaticResource FieldLabel}" Grid.Row="1" />
-                    <TextBox Grid.Row="1" Grid.Column="1"
-                             Text="{x:Bind ViewModel.ReplacePattern, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                             PlaceholderText="Replacement (literal or $1 backrefs)" FontSize="12" />
-                    <Button Grid.Row="1" Grid.Column="2" Style="{StaticResource RecentsButton}" Click="OnReplacePatternRecentsClicked">
-                        <FontIcon Glyph="&#xE823;" FontSize="12" />
-                    </Button>
-
-                    <controls:WrapPanel Grid.Row="2" Grid.ColumnSpan="3" HorizontalSpacing="10" VerticalSpacing="2" Margin="0,1,0,0">
-                        <CheckBox Style="{StaticResource CompactCheckBox}" Content="Use regex" IsChecked="{x:Bind ViewModel.UseRegex, Mode=TwoWay}" />
-                        <CheckBox Style="{StaticResource CompactCheckBox}" Content="Case sensitive" IsChecked="{x:Bind ViewModel.CaseSensitive, Mode=TwoWay}" />
-                        <CheckBox Style="{StaticResource CompactCheckBox}" Content="Whole word" IsChecked="{x:Bind ViewModel.WholeWord, Mode=TwoWay}" />
-                        <CheckBox Style="{StaticResource CompactCheckBox}" Content="Preserve case" IsChecked="{x:Bind ViewModel.PreserveCase, Mode=TwoWay}" />
-                        <CheckBox Style="{StaticResource CompactCheckBox}" Content="Dot matches newline"
-                                  IsChecked="{x:Bind ViewModel.DotMatchesNewline, Mode=TwoWay}"
-                                  IsEnabled="{x:Bind ViewModel.IsDotMatchesNewlineEnabled, Mode=OneWay}" />
-                        <CheckBox Style="{StaticResource CompactCheckBox}" Content="Search in file &amp; sub directory names"
-                                  IsChecked="{x:Bind ViewModel.SearchInNames, Mode=TwoWay}" />
-                        <CheckBox Style="{StaticResource CompactCheckBox}" Content="Keep file date when replacing"
-                                  IsChecked="{x:Bind ViewModel.KeepFileDate, Mode=TwoWay}" />
-                    </controls:WrapPanel>
-                </Grid>
-
-                <!-- FILTER -->
-                <TextBlock Text="FILTER" Style="{StaticResource SectionHeader}" />
-                <Grid x:Name="FilterGrid" ColumnSpacing="12">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition x:Name="FilterLeftCol" Width="*" />
-                        <ColumnDefinition x:Name="FilterRightCol" Width="*" />
-                    </Grid.ColumnDefinitions>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                    </Grid.RowDefinitions>
-
-                    <Grid Grid.Column="0" Grid.RowSpan="2" ColumnSpacing="6" RowSpacing="3" VerticalAlignment="Top">
+                    <!-- WHERE -->
+                    <TextBlock Text="WHERE" Style="{StaticResource SectionHeader}" />
+                    <Grid ColumnSpacing="6" RowSpacing="3">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="80" />
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                        </Grid.RowDefinitions>
-
-                        <TextBlock Text="File names:" Style="{StaticResource FieldLabel}" Grid.Row="0" />
-                        <TextBox Grid.Row="0" Grid.Column="1"
-                                 Text="{x:Bind ViewModel.FileNames, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                 PlaceholderText="*.cs|*.ts|!*.Generated.cs" FontSize="12" />
-                        <Button Grid.Row="0" Grid.Column="2" Style="{StaticResource RecentsButton}" Click="OnFileNamesRecentsClicked">
+                        <TextBlock Text="Search in:" Style="{StaticResource FieldLabel}" VerticalAlignment="Top" Margin="0,4,0,0" />
+                        <TextBox x:Name="SearchInBox" Grid.Column="1"
+                                 Text="{x:Bind ViewModel.SearchIn, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                 AcceptsReturn="True" TextWrapping="Wrap"
+                                 PlaceholderText="One directory per line, or click Browse"
+                                 Height="{x:Bind ViewModel.SearchInBoxHeight, Mode=OneWay}"
+                                 FontSize="12" />
+                        <ToggleButton Grid.Column="2" VerticalAlignment="Top"
+                                      IsChecked="{x:Bind ViewModel.IsSearchInExpanded, Mode=TwoWay}"
+                                      Padding="6,4" MinWidth="0"
+                                      ToolTipService.ToolTip="Expand / collapse">
+                            <FontIcon Glyph="&#xE740;" FontSize="10" />
+                        </ToggleButton>
+                        <Button Grid.Column="3" VerticalAlignment="Top"
+                                Style="{StaticResource RecentsButton}" Click="OnSearchInRecentsClicked"
+                                ToolTipService.ToolTip="Recent">
                             <FontIcon Glyph="&#xE823;" FontSize="12" />
                         </Button>
-                        <CheckBox Grid.Row="0" Grid.Column="3" Style="{StaticResource CompactCheckBox}" Content="Regex"
-                                  IsChecked="{x:Bind ViewModel.FileNamesRegex, Mode=TwoWay}" VerticalAlignment="Center" />
-
-                        <TextBlock Text="Exclude paths:" Style="{StaticResource FieldLabel}" Grid.Row="1" />
-                        <TextBox Grid.Row="1" Grid.Column="1"
-                                 Text="{x:Bind ViewModel.ExcludePaths, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                 PlaceholderText="bin|obj|node_modules|*.tmp" FontSize="12" />
-                        <Button Grid.Row="1" Grid.Column="2" Style="{StaticResource RecentsButton}" Click="OnExcludePathsRecentsClicked">
-                            <FontIcon Glyph="&#xE823;" FontSize="12" />
-                        </Button>
-                        <CheckBox Grid.Row="1" Grid.Column="3" Style="{StaticResource CompactCheckBox}" Content="Regex"
-                                  IsChecked="{x:Bind ViewModel.ExcludePathsRegex, Mode=TwoWay}" VerticalAlignment="Center" />
+                        <Button Grid.Column="4" VerticalAlignment="Top" Content="Browse…" Click="OnBrowseClicked" />
                     </Grid>
 
-                    <Grid x:Name="SizeDateGrid" Grid.Column="1" Grid.RowSpan="2" ColumnSpacing="6" RowSpacing="3" VerticalAlignment="Top">
+                    <!-- WHAT -->
+                    <TextBlock Text="WHAT" Style="{StaticResource SectionHeader}" />
+                    <Grid ColumnSpacing="6" RowSpacing="3">
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="60" />
+                            <ColumnDefinition Width="80" />
                             <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <TextBlock Text="Search for:" Style="{StaticResource FieldLabel}" Grid.Row="0" />
+                        <TextBox Grid.Row="0" Grid.Column="1"
+                                 Text="{x:Bind ViewModel.SearchPattern, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                 PlaceholderText="Pattern (text or regex)" FontSize="12" />
+                        <Button Grid.Row="0" Grid.Column="2" Style="{StaticResource RecentsButton}" Click="OnSearchPatternRecentsClicked">
+                            <FontIcon Glyph="&#xE823;" FontSize="12" />
+                        </Button>
+
+                        <TextBlock Text="Replace with:" Style="{StaticResource FieldLabel}" Grid.Row="1" />
+                        <TextBox Grid.Row="1" Grid.Column="1"
+                                 Text="{x:Bind ViewModel.ReplacePattern, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                 PlaceholderText="Replacement (literal or $1 backrefs)" FontSize="12" />
+                        <Button Grid.Row="1" Grid.Column="2" Style="{StaticResource RecentsButton}" Click="OnReplacePatternRecentsClicked">
+                            <FontIcon Glyph="&#xE823;" FontSize="12" />
+                        </Button>
+
+                        <controls:WrapPanel Grid.Row="2" Grid.ColumnSpan="3" HorizontalSpacing="10" VerticalSpacing="2" Margin="0,1,0,0">
+                            <CheckBox Style="{StaticResource CompactCheckBox}" Content="Use regex" IsChecked="{x:Bind ViewModel.UseRegex, Mode=TwoWay}" />
+                            <CheckBox Style="{StaticResource CompactCheckBox}" Content="Case sensitive" IsChecked="{x:Bind ViewModel.CaseSensitive, Mode=TwoWay}" />
+                            <CheckBox Style="{StaticResource CompactCheckBox}" Content="Whole word" IsChecked="{x:Bind ViewModel.WholeWord, Mode=TwoWay}" />
+                            <CheckBox Style="{StaticResource CompactCheckBox}" Content="Preserve case" IsChecked="{x:Bind ViewModel.PreserveCase, Mode=TwoWay}" />
+                            <CheckBox Style="{StaticResource CompactCheckBox}" Content="Dot matches newline"
+                                      IsChecked="{x:Bind ViewModel.DotMatchesNewline, Mode=TwoWay}"
+                                      IsEnabled="{x:Bind ViewModel.IsDotMatchesNewlineEnabled, Mode=OneWay}" />
+                            <CheckBox Style="{StaticResource CompactCheckBox}" Content="Search in file &amp; sub directory names"
+                                      IsChecked="{x:Bind ViewModel.SearchInNames, Mode=TwoWay}" />
+                            <CheckBox Style="{StaticResource CompactCheckBox}" Content="Keep file date when replacing"
+                                      IsChecked="{x:Bind ViewModel.KeepFileDate, Mode=TwoWay}" />
+                        </controls:WrapPanel>
+                    </Grid>
+
+                    <!-- FILTER (with Reset button) -->
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="FILTER" Style="{StaticResource SectionHeader}" />
+                        <Button Grid.Column="1" Style="{StaticResource SmallButton}"
+                                Command="{x:Bind ViewModel.ResetFiltersCommand}"
+                                ToolTipService.ToolTip="Reset filter values to defaults"
+                                Margin="0,4,0,0">
+                            <StackPanel Orientation="Horizontal" Spacing="4">
+                                <FontIcon Glyph="&#xE777;" FontSize="10" />
+                                <TextBlock Text="Reset" />
+                            </StackPanel>
+                        </Button>
+                    </Grid>
+                    <Grid x:Name="FilterGrid" ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition x:Name="FilterLeftCol" Width="*" />
+                            <ColumnDefinition x:Name="FilterRightCol" Width="*" />
                         </Grid.ColumnDefinitions>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
 
-                        <TextBlock Text="Size:" Style="{StaticResource FieldLabel}" Grid.Row="0" />
-                        <controls:WrapPanel Grid.Row="0" Grid.Column="1" HorizontalSpacing="4" VerticalSpacing="2">
-                            <ComboBox SelectedIndex="{x:Bind ViewModel.SizeModeIndex, Mode=TwoWay}" MinWidth="110" FontSize="12">
-                                <ComboBoxItem Content="All sizes" />
-                                <ComboBoxItem Content="Less than" />
-                                <ComboBoxItem Content="Greater than" />
-                                <ComboBoxItem Content="Between" />
-                            </ComboBox>
-                            <NumberBox Value="{x:Bind ViewModel.SizeKb, Mode=TwoWay}"
-                                       Minimum="0" SpinButtonPlacementMode="Compact" Width="90"
-                                       IsEnabled="{x:Bind ViewModel.SizeValueEnabled, Mode=OneWay}" />
-                            <TextBlock Text="and" Style="{StaticResource FieldLabel}"
-                                       Visibility="{x:Bind ViewModel.SizeUpperVisibility, Mode=OneWay}" />
-                            <NumberBox Value="{x:Bind ViewModel.SizeKbUpper, Mode=TwoWay}"
-                                       Minimum="0" SpinButtonPlacementMode="Compact" Width="90"
-                                       Visibility="{x:Bind ViewModel.SizeUpperVisibility, Mode=OneWay}" />
-                            <TextBlock Text="KB" Style="{StaticResource FieldLabel}" />
-                        </controls:WrapPanel>
+                        <Grid Grid.Column="0" Grid.RowSpan="2" ColumnSpacing="6" RowSpacing="3" VerticalAlignment="Top">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="80" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
 
-                        <TextBlock Text="Date:" Style="{StaticResource FieldLabel}" Grid.Row="1" />
-                        <controls:WrapPanel Grid.Row="1" Grid.Column="1" HorizontalSpacing="4" VerticalSpacing="2">
-                            <ComboBox SelectedIndex="{x:Bind ViewModel.DateModeIndex, Mode=TwoWay}" MinWidth="110" FontSize="12">
-                                <ComboBoxItem Content="All dates" />
-                                <ComboBoxItem Content="Newer than" />
-                                <ComboBoxItem Content="Older than" />
-                                <ComboBoxItem Content="Exactly on" />
-                                <ComboBoxItem Content="Between" />
-                            </ComboBox>
-                            <CalendarDatePicker Date="{x:Bind ViewModel.DateFrom, Mode=TwoWay}"
-                                                Visibility="{x:Bind ViewModel.DateFromVisibility, Mode=OneWay}"
-                                                DateFormat="{}{year.full}-{month.integer(2)}-{day.integer(2)}"
-                                                PlaceholderText="yyyy-mm-dd" />
-                            <CalendarDatePicker Date="{x:Bind ViewModel.DateTo, Mode=TwoWay}"
-                                                Visibility="{x:Bind ViewModel.DateToVisibility, Mode=OneWay}"
-                                                DateFormat="{}{year.full}-{month.integer(2)}-{day.integer(2)}"
-                                                PlaceholderText="yyyy-mm-dd" />
-                        </controls:WrapPanel>
+                            <TextBlock Text="File names:" Style="{StaticResource FieldLabel}" Grid.Row="0" />
+                            <TextBox Grid.Row="0" Grid.Column="1"
+                                     Text="{x:Bind ViewModel.FileNames, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                     PlaceholderText="*.cs|*.ts|!*.Generated.cs" FontSize="12" />
+                            <Button Grid.Row="0" Grid.Column="2" Style="{StaticResource RecentsButton}" Click="OnFileNamesRecentsClicked">
+                                <FontIcon Glyph="&#xE823;" FontSize="12" />
+                            </Button>
+                            <CheckBox Grid.Row="0" Grid.Column="3" Style="{StaticResource CompactCheckBox}" Content="Regex"
+                                      IsChecked="{x:Bind ViewModel.FileNamesRegex, Mode=TwoWay}" VerticalAlignment="Center" />
+
+                            <TextBlock Text="Exclude paths:" Style="{StaticResource FieldLabel}" Grid.Row="1" />
+                            <TextBox Grid.Row="1" Grid.Column="1"
+                                     Text="{x:Bind ViewModel.ExcludePaths, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                     PlaceholderText="bin|obj|node_modules|*.tmp" FontSize="12" />
+                            <Button Grid.Row="1" Grid.Column="2" Style="{StaticResource RecentsButton}" Click="OnExcludePathsRecentsClicked">
+                                <FontIcon Glyph="&#xE823;" FontSize="12" />
+                            </Button>
+                            <CheckBox Grid.Row="1" Grid.Column="3" Style="{StaticResource CompactCheckBox}" Content="Regex"
+                                      IsChecked="{x:Bind ViewModel.ExcludePathsRegex, Mode=TwoWay}" VerticalAlignment="Center" />
+                        </Grid>
+
+                        <Grid x:Name="SizeDateGrid" Grid.Column="1" Grid.RowSpan="2" ColumnSpacing="6" RowSpacing="3" VerticalAlignment="Top">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="60" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <TextBlock Text="Size:" Style="{StaticResource FieldLabel}" Grid.Row="0" />
+                            <controls:WrapPanel Grid.Row="0" Grid.Column="1" HorizontalSpacing="4" VerticalSpacing="2">
+                                <ComboBox SelectedIndex="{x:Bind ViewModel.SizeModeIndex, Mode=TwoWay}" MinWidth="110" FontSize="12">
+                                    <ComboBoxItem Content="All sizes" />
+                                    <ComboBoxItem Content="Less than" />
+                                    <ComboBoxItem Content="Greater than" />
+                                    <ComboBoxItem Content="Between" />
+                                </ComboBox>
+                                <NumberBox Value="{x:Bind ViewModel.SizeKb, Mode=TwoWay}"
+                                           Minimum="0" SpinButtonPlacementMode="Compact" Width="90"
+                                           IsEnabled="{x:Bind ViewModel.SizeValueEnabled, Mode=OneWay}" />
+                                <TextBlock Text="and" Style="{StaticResource FieldLabel}"
+                                           Visibility="{x:Bind ViewModel.SizeUpperVisibility, Mode=OneWay}" />
+                                <NumberBox Value="{x:Bind ViewModel.SizeKbUpper, Mode=TwoWay}"
+                                           Minimum="0" SpinButtonPlacementMode="Compact" Width="90"
+                                           Visibility="{x:Bind ViewModel.SizeUpperVisibility, Mode=OneWay}" />
+                                <TextBlock Text="KB" Style="{StaticResource FieldLabel}" />
+                            </controls:WrapPanel>
+
+                            <TextBlock Text="Date:" Style="{StaticResource FieldLabel}" Grid.Row="1" />
+                            <controls:WrapPanel Grid.Row="1" Grid.Column="1" HorizontalSpacing="4" VerticalSpacing="2">
+                                <ComboBox SelectedIndex="{x:Bind ViewModel.DateModeIndex, Mode=TwoWay}" MinWidth="110" FontSize="12">
+                                    <ComboBoxItem Content="All dates" />
+                                    <ComboBoxItem Content="Newer than" />
+                                    <ComboBoxItem Content="Older than" />
+                                    <ComboBoxItem Content="Exactly on" />
+                                    <ComboBoxItem Content="Between" />
+                                </ComboBox>
+                                <CalendarDatePicker Date="{x:Bind ViewModel.DateFrom, Mode=TwoWay}"
+                                                    Visibility="{x:Bind ViewModel.DateFromVisibility, Mode=OneWay}"
+                                                    DateFormat="{}{year.full}-{month.integer(2)}-{day.integer(2)}"
+                                                    PlaceholderText="yyyy-mm-dd" />
+                                <CalendarDatePicker Date="{x:Bind ViewModel.DateTo, Mode=TwoWay}"
+                                                    Visibility="{x:Bind ViewModel.DateToVisibility, Mode=OneWay}"
+                                                    DateFormat="{}{year.full}-{month.integer(2)}-{day.integer(2)}"
+                                                    PlaceholderText="yyyy-mm-dd" />
+                            </controls:WrapPanel>
+                        </Grid>
                     </Grid>
-                </Grid>
 
-                <controls:WrapPanel HorizontalSpacing="10" VerticalSpacing="2" Margin="0,2,0,0">
-                    <CheckBox Style="{StaticResource CompactCheckBox}" Content="Include subfolders" IsChecked="{x:Bind ViewModel.IncludeSubfolders, Mode=TwoWay}" />
-                    <CheckBox Style="{StaticResource CompactCheckBox}" Content="Include system files" IsChecked="{x:Bind ViewModel.IncludeSystem, Mode=TwoWay}" />
-                    <CheckBox Style="{StaticResource CompactCheckBox}" Content="Include hidden items" IsChecked="{x:Bind ViewModel.IncludeHidden, Mode=TwoWay}" />
-                    <CheckBox Style="{StaticResource CompactCheckBox}" Content="Follow symbolic links" IsChecked="{x:Bind ViewModel.FollowSymlinks, Mode=TwoWay}" />
-                    <CheckBox Style="{StaticResource CompactCheckBox}" Content="Skip binary files" IsChecked="{x:Bind ViewModel.SkipBinaryFiles, Mode=TwoWay}" />
-                </controls:WrapPanel>
+                    <controls:WrapPanel HorizontalSpacing="10" VerticalSpacing="2" Margin="0,2,0,0">
+                        <CheckBox Style="{StaticResource CompactCheckBox}" Content="Include subfolders" IsChecked="{x:Bind ViewModel.IncludeSubfolders, Mode=TwoWay}" />
+                        <CheckBox Style="{StaticResource CompactCheckBox}" Content="Include system files" IsChecked="{x:Bind ViewModel.IncludeSystem, Mode=TwoWay}" />
+                        <CheckBox Style="{StaticResource CompactCheckBox}" Content="Include hidden items" IsChecked="{x:Bind ViewModel.IncludeHidden, Mode=TwoWay}" />
+                        <CheckBox Style="{StaticResource CompactCheckBox}" Content="Follow symbolic links" IsChecked="{x:Bind ViewModel.FollowSymlinks, Mode=TwoWay}" />
+                        <CheckBox Style="{StaticResource CompactCheckBox}" Content="Skip binary files" IsChecked="{x:Bind ViewModel.SkipBinaryFiles, Mode=TwoWay}" />
+                    </controls:WrapPanel>
 
-            </StackPanel>
-        </ScrollViewer>
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- Action bar: bottom-right of form area -->
+            <Grid Grid.Row="1" Padding="6,4,6,4">
+                <TextBlock Text="{x:Bind ViewModel.ResultsSummary, Mode=OneWay}"
+                           HorizontalAlignment="Left" VerticalAlignment="Center"
+                           Opacity="0.7" FontSize="12" />
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="4">
+                    <SplitButton Command="{x:Bind ViewModel.SearchCommand}"
+                                 Visibility="{x:Bind ViewModel.SearchButtonVisibility, Mode=OneWay}">
+                        <SplitButton.Content>
+                            <StackPanel Orientation="Horizontal" Spacing="4">
+                                <FontIcon Glyph="&#xE721;" FontSize="12" />
+                                <TextBlock Text="Search" />
+                            </StackPanel>
+                        </SplitButton.Content>
+                        <SplitButton.Flyout>
+                            <MenuFlyout>
+                                <MenuFlyoutItem Text="Inverse search (TODO)" IsEnabled="False" />
+                                <MenuFlyoutItem Text="Search in currently found files (TODO)" IsEnabled="False" />
+                            </MenuFlyout>
+                        </SplitButton.Flyout>
+                    </SplitButton>
+                    <Button Command="{x:Bind ViewModel.CancelSearchCommand}"
+                            Visibility="{x:Bind ViewModel.CancelButtonVisibility, Mode=OneWay}">
+                        <StackPanel Orientation="Horizontal" Spacing="4">
+                            <FontIcon Glyph="&#xE711;" FontSize="12" />
+                            <TextBlock Text="Cancel" />
+                        </StackPanel>
+                    </Button>
+                    <Button Command="{x:Bind ViewModel.ReplaceCommand}">
+                        <StackPanel Orientation="Horizontal" Spacing="4">
+                            <FontIcon Glyph="&#xE74E;" FontSize="12" />
+                            <TextBlock Text="Replace" />
+                        </StackPanel>
+                    </Button>
+                    <DropDownButton x:Name="PresetsButton">
+                        <DropDownButton.Content>
+                            <StackPanel Orientation="Horizontal" Spacing="4">
+                                <FontIcon Glyph="&#xE74C;" FontSize="12" />
+                                <TextBlock Text="Presets" />
+                            </StackPanel>
+                        </DropDownButton.Content>
+                        <DropDownButton.Flyout>
+                            <MenuFlyout x:Name="PresetsFlyout" Opening="OnPresetsFlyoutOpening" />
+                        </DropDownButton.Flyout>
+                    </DropDownButton>
+                </StackPanel>
+            </Grid>
+        </Grid>
 
         <!-- Splitter -->
         <controls:GridSplitter Grid.Row="2" Height="6" HorizontalAlignment="Stretch"
                                ResizeBehavior="PreviousAndNext" ResizeDirection="Rows" />
 
-        <!-- Action bar (between splitter and results) -->
-        <Grid Grid.Row="3" Padding="6,4,6,4">
-            <StackPanel Orientation="Horizontal" Spacing="4">
-                <SplitButton Command="{x:Bind ViewModel.SearchCommand}"
-                             Visibility="{x:Bind ViewModel.SearchButtonVisibility, Mode=OneWay}">
-                    <SplitButton.Content>
-                        <StackPanel Orientation="Horizontal" Spacing="4">
-                            <FontIcon Glyph="&#xE721;" FontSize="12" />
-                            <TextBlock Text="Search" />
-                        </StackPanel>
-                    </SplitButton.Content>
-                    <SplitButton.Flyout>
-                        <MenuFlyout>
-                            <MenuFlyoutItem Text="Inverse search (TODO)" IsEnabled="False" />
-                            <MenuFlyoutItem Text="Search in currently found files (TODO)" IsEnabled="False" />
-                        </MenuFlyout>
-                    </SplitButton.Flyout>
-                </SplitButton>
-                <Button Command="{x:Bind ViewModel.CancelSearchCommand}"
-                        Visibility="{x:Bind ViewModel.CancelButtonVisibility, Mode=OneWay}">
-                    <StackPanel Orientation="Horizontal" Spacing="4">
-                        <FontIcon Glyph="&#xE711;" FontSize="12" />
-                        <TextBlock Text="Cancel" />
-                    </StackPanel>
-                </Button>
-                <Button Command="{x:Bind ViewModel.ReplaceCommand}">
-                    <StackPanel Orientation="Horizontal" Spacing="4">
-                        <FontIcon Glyph="&#xE74E;" FontSize="12" />
-                        <TextBlock Text="Replace" />
-                    </StackPanel>
-                </Button>
-                <DropDownButton x:Name="PresetsButton">
-                    <DropDownButton.Content>
-                        <StackPanel Orientation="Horizontal" Spacing="4">
-                            <FontIcon Glyph="&#xE74C;" FontSize="12" />
-                            <TextBlock Text="Presets" />
-                        </StackPanel>
-                    </DropDownButton.Content>
-                    <DropDownButton.Flyout>
-                        <MenuFlyout x:Name="PresetsFlyout" Opening="OnPresetsFlyoutOpening" />
-                    </DropDownButton.Flyout>
-                </DropDownButton>
-                <TextBlock Text="{x:Bind ViewModel.ResultsSummary, Mode=OneWay}"
-                           Opacity="0.7" VerticalAlignment="Center" FontSize="12" Margin="8,0,0,0" />
-            </StackPanel>
-        </Grid>
-
         <!-- Results -->
-        <Border Grid.Row="4" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="4" Margin="6,0,6,6">
+        <Border Grid.Row="3" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="4" Margin="6,0,6,6">
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
@@ -342,17 +373,17 @@
                         <ColumnDefinition Width="{x:Bind ViewModel.DateWidth, Mode=OneWay}" />
                     </Grid.ColumnDefinitions>
                     <TextBlock Grid.Column="1" Text="Name" FontWeight="SemiBold" FontSize="12" />
-                    <primitives:Thumb Grid.Column="2" Style="{StaticResource ColumnResizer}" DragDelta="OnNameThumbDragDelta" />
+                    <lc:ColumnResizer Grid.Column="2" Style="{StaticResource ColumnResizer}" DragDelta="OnNameThumbDragDelta" />
                     <TextBlock Grid.Column="3" Text="Size" FontWeight="SemiBold" FontSize="12" />
-                    <primitives:Thumb Grid.Column="4" Style="{StaticResource ColumnResizer}" DragDelta="OnSizeThumbDragDelta" />
+                    <lc:ColumnResizer Grid.Column="4" Style="{StaticResource ColumnResizer}" DragDelta="OnSizeThumbDragDelta" />
                     <TextBlock Grid.Column="5" Text="Matches" FontWeight="SemiBold" FontSize="12" />
-                    <primitives:Thumb Grid.Column="6" Style="{StaticResource ColumnResizer}" DragDelta="OnMatchesThumbDragDelta" />
+                    <lc:ColumnResizer Grid.Column="6" Style="{StaticResource ColumnResizer}" DragDelta="OnMatchesThumbDragDelta" />
                     <TextBlock Grid.Column="7" Text="Path" FontWeight="SemiBold" FontSize="12" />
-                    <primitives:Thumb Grid.Column="8" Style="{StaticResource ColumnResizer}" DragDelta="OnPathThumbDragDelta" />
+                    <lc:ColumnResizer Grid.Column="8" Style="{StaticResource ColumnResizer}" DragDelta="OnPathThumbDragDelta" />
                     <TextBlock Grid.Column="9" Text="Ext" FontWeight="SemiBold" FontSize="12" />
-                    <primitives:Thumb Grid.Column="10" Style="{StaticResource ColumnResizer}" DragDelta="OnExtThumbDragDelta" />
+                    <lc:ColumnResizer Grid.Column="10" Style="{StaticResource ColumnResizer}" DragDelta="OnExtThumbDragDelta" />
                     <TextBlock Grid.Column="11" Text="Encoding" FontWeight="SemiBold" FontSize="12" />
-                    <primitives:Thumb Grid.Column="12" Style="{StaticResource ColumnResizer}" DragDelta="OnEncodingThumbDragDelta" />
+                    <lc:ColumnResizer Grid.Column="12" Style="{StaticResource ColumnResizer}" DragDelta="OnEncodingThumbDragDelta" />
                     <TextBlock Grid.Column="13" Text="Date modified" FontWeight="SemiBold" FontSize="12" />
                 </Grid>
 

@@ -116,7 +116,8 @@ public sealed partial class MainWindow : Window
 
     private void CollapseFormRow()
     {
-        FormRow.Height = new GridLength(0);
+        // Use Star (with 0 weight) so the GridSplitter can drag the row back to a positive size.
+        FormRow.Height = new GridLength(0, GridUnitType.Star);
     }
 
     private nint SubclassProc(nint hWnd, uint msg, nint wParam, nint lParam, nuint subclassId, nuint refData)
