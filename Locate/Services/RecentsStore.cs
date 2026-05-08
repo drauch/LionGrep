@@ -7,8 +7,14 @@ public sealed class RecentsStore
     private const int Capacity = 10;
     private const string SubPath = "Recents";
 
+    private readonly SettingsStore _settingsStore;
+
+    public RecentsStore() : this(new SettingsStore()) { }
+    public RecentsStore(SettingsStore settingsStore) { _settingsStore = settingsStore; }
+
     public IReadOnlyList<string> Get(string fieldName)
     {
+        if (!_settingsStore.Load().RememberRecentValues) return [];
         var json = RegistryStore.ReadString(SubPath, fieldName);
         if (string.IsNullOrEmpty(json)) return [];
         try
@@ -31,14 +37,29 @@ public sealed class RecentsStore
 
     public void Add(string fieldName, string value)
     {
+        if (!_settingsStore.Load().RememberRecentValues) return;
         if (string.IsNullOrWhiteSpace(value)) return;
         value = value.TrimEnd();
         if (value.Length == 0) return;
 
-        var list = Get(fieldName).ToList();
-        list.RemoveAll(s => string.Equals(s, value, StringComparison.Ordinal));
-        list.Insert(0, value);
-        if (list.Count > Capacity) list.RemoveRange(Capacity, list.Count - Capacity);
-        RegistryStore.WriteString(SubPath, fieldName, JsonSerializer.Serialize(list));
+        // Re-read raw (skip the persistence gate) so we don't drop entries when toggling settings.
+        var raw = ReadRaw(fieldName);
+        raw.RemoveAll(s => string.Equals(s, value, StringComparison.Ordinal));
+        raw.Insert(0, value);
+        if (raw.Count > Capacity) raw.RemoveRange(Capacity, raw.Count - Capacity);
+        RegistryStore.WriteString(SubPath, fieldName, JsonSerializer.Serialize(raw));
+    }
+
+    public static void ClearAll()
+    {
+        RegistryStore.DeleteSubTree(SubPath);
+    }
+
+    private static List<string> ReadRaw(string fieldName)
+    {
+        var json = RegistryStore.ReadString(SubPath, fieldName);
+        if (string.IsNullOrEmpty(json)) return [];
+        try { return JsonSerializer.Deserialize<List<string>>(json) ?? []; }
+        catch { return []; }
     }
 }

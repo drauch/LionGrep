@@ -218,7 +218,9 @@ Opened from the gear icon in the title bar.
 
 - **External editor** — command line for opening a file at a given line/column. Browse picks an `.exe` and pre-fills a sensible template like `"C:\…\code.exe" "%path%":%line%:%column%`. **Quote `%path%`** if your paths might contain spaces.
 - **Don't warn when replacing** — suppresses the Replace confirmation dialog. Also set automatically when you tick "Don't warn me again" in the dialog itself.
+- **Remember recently used values between sessions** — when ticked (default), the recents dropdown for each input persists in the registry. Untick to disable: existing history is wiped on Save and no new entries are recorded.
 - **Presets** — list view on the left, details panel on the right. Add / Remove buttons. Each preset has a name, optional hotkey, and three apply-group checkboxes. Save persists everything; Close also saves.
+- **Reset everything…** (footer, left side) — wipes the entire `HKCU\Software\Locate` registry hive: settings, presets, recents, and the last-form snapshot. Confirmation dialog protects against accidents; the action is irreversible.
 
 All settings persist under `HKCU\Software\Locate`.
 
@@ -235,7 +237,8 @@ All settings persist under `HKCU\Software\Locate`.
 | **F2** etc. | Whatever you've assigned to a preset |
 | **Double-click on input field** | Show recents dropdown for that field, sized to the input's width |
 | **Double-click on result row** | Open file in editor (multi-select prompts a confirmation first) |
-| **Right-click on result row** | Selects the right-clicked row if it isn't already in the selection, then opens the context menu |
+| **Right-click on result row** | If nothing is selected, selects the right-clicked row before opening the menu; existing multi-select is preserved |
+| **Open with editor / Open containing folder** | Always confirms when more than one file is selected (no Explorer-spam from a stray multi-select) |
 
 ---
 

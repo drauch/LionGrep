@@ -17,4 +17,16 @@ internal static class RegistryStore
         using var key = Registry.CurrentUser.CreateSubKey($@"{RootPath}\{subPath}");
         key.SetValue(name, value);
     }
+
+    public static void DeleteSubTree(string subPath)
+    {
+        try { Registry.CurrentUser.DeleteSubKeyTree($@"{RootPath}\{subPath}", throwOnMissingSubKey: false); }
+        catch { /* best effort */ }
+    }
+
+    public static void DeleteAll()
+    {
+        try { Registry.CurrentUser.DeleteSubKeyTree(RootPath, throwOnMissingSubKey: false); }
+        catch { /* best effort */ }
+    }
 }

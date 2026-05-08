@@ -41,6 +41,8 @@
                        Text="Placeholders: %path%, %line%, %column%. Quote %path% if it may contain spaces." />
             <CheckBox Content="Don't warn when replacing"
                       IsChecked="{x:Bind ViewModel.DontWarnWhenReplacing, Mode=TwoWay}" Margin="0,4,0,0" />
+            <CheckBox Content="Remember recently used values between sessions"
+                      IsChecked="{x:Bind ViewModel.RememberRecentValues, Mode=TwoWay}" />
         </StackPanel>
 
         <!-- Presets -->
@@ -120,9 +122,13 @@
         </Grid>
 
         <!-- Footer -->
-        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="6">
-            <Button Content="Save" Click="OnSaveClicked" Style="{ThemeResource AccentButtonStyle}" />
-            <Button Content="Close" Click="OnCloseClicked" />
-        </StackPanel>
+        <Grid Grid.Row="3">
+            <Button Content="Reset everything…" Click="OnResetEverythingClicked" HorizontalAlignment="Left"
+                    ToolTipService.ToolTip="Erase all settings, presets, and recent values" />
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="6">
+                <Button Content="Save" Click="OnSaveClicked" Style="{ThemeResource AccentButtonStyle}" />
+                <Button Content="Close" Click="OnCloseClicked" />
+            </StackPanel>
+        </Grid>
     </Grid>
 </Window>

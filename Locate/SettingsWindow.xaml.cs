@@ -1,6 +1,7 @@
 using Locate.Services;
 using Locate.ViewModels;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
 using Windows.Graphics;
 using Windows.Storage.Pickers;
 using WinRT.Interop;
@@ -38,5 +39,21 @@ public sealed partial class SettingsWindow : Window
     {
         ViewModel.SaveAll();
         Close();
+    }
+
+    private async void OnResetEverythingClicked(object sender, RoutedEventArgs e)
+    {
+        var dialog = new ContentDialog
+        {
+            XamlRoot = Content.XamlRoot,
+            Title = "Reset everything?",
+            Content = "This erases all Locate settings, presets, and recently used values "
+                    + "(including the registry data behind them). This cannot be undone.",
+            PrimaryButtonText = "Reset everything",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Close,
+        };
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+        ViewModel.ResetEverything();
     }
 }

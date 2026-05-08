@@ -300,6 +300,7 @@ public sealed partial class MainWindow : Window
     {
         var items = _recentsStore.Get(fieldKey).Take(10).ToList();
         var width = anchor.ActualWidth > 0 ? anchor.ActualWidth : 240;
+
         var listView = new ListView
         {
             SelectionMode = ListViewSelectionMode.None,
@@ -330,7 +331,6 @@ public sealed partial class MainWindow : Window
             Content = listView,
             ShouldConstrainToRootBounds = true,
         };
-        // Strip the default flyout padding so the dropdown truly matches the input width edge-to-edge.
         var presenterStyle = new Style(typeof(FlyoutPresenter));
         presenterStyle.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(0)));
         presenterStyle.Setters.Add(new Setter(FrameworkElement.MinWidthProperty, 0d));
@@ -400,7 +400,7 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        if (selected.Count > 5)
+        if (selected.Count > 1)
         {
             if (!await ConfirmBulkAsync($"Open {selected.Count:N0} files in editor?",
                 $"This will launch {selected.Count:N0} editor windows.")) return;
@@ -481,7 +481,7 @@ public sealed partial class MainWindow : Window
     {
         var selected = ExplicitlySelectedFiles();
         if (selected.Count == 0) return;
-        if (selected.Count > 5)
+        if (selected.Count > 1)
         {
             if (!await ConfirmBulkAsync($"Open {selected.Count:N0} folders?",
                 $"This will launch {selected.Count:N0} Explorer windows.")) return;

@@ -7,6 +7,7 @@ public sealed class AppSettings
 {
     public string EditorCommand { get; set; } = "";
     public bool DontWarnWhenReplacing { get; set; }
+    public bool RememberRecentValues { get; set; } = true;
     public Preset? LastForm { get; set; }
 }
 
@@ -15,14 +16,18 @@ public sealed class SettingsStore
     private const string SubPath = "Settings";
     private const string EditorCommandValue = "EditorCommand";
     private const string DontWarnValue = "DontWarnWhenReplacing";
+    private const string RememberRecentsValue = "RememberRecentValues";
     private const string LastFormValue = "LastForm";
 
     public AppSettings Load()
     {
+        var rememberRaw = RegistryStore.ReadString(SubPath, RememberRecentsValue);
         var settings = new AppSettings
         {
             EditorCommand = RegistryStore.ReadString(SubPath, EditorCommandValue) ?? "",
             DontWarnWhenReplacing = RegistryStore.ReadString(SubPath, DontWarnValue) == "1",
+            // Default true: enabled unless explicitly disabled.
+            RememberRecentValues = rememberRaw != "0",
         };
         var lastForm = RegistryStore.ReadString(SubPath, LastFormValue);
         if (!string.IsNullOrEmpty(lastForm))
@@ -37,6 +42,7 @@ public sealed class SettingsStore
     {
         RegistryStore.WriteString(SubPath, EditorCommandValue, settings.EditorCommand);
         RegistryStore.WriteString(SubPath, DontWarnValue, settings.DontWarnWhenReplacing ? "1" : "0");
+        RegistryStore.WriteString(SubPath, RememberRecentsValue, settings.RememberRecentValues ? "1" : "0");
         if (settings.LastForm is not null)
             RegistryStore.WriteString(SubPath, LastFormValue, JsonSerializer.Serialize(settings.LastForm));
     }
