@@ -172,9 +172,11 @@ Double-click any line entry to open the configured external editor at that file/
 
 ## 8. Splitter & form layout
 
-The horizontal divider between form and results can be dragged vertically. On launch, the divider is positioned exactly at the form's natural content height — no wasted blank space.
+The horizontal divider between form and results can be dragged vertically. On launch, the divider is positioned at the form's natural content height — no wasted blank space.
 
 When you start a search or replace, the form row collapses (the divider rides up to the top). Drag it back down to see the form again.
+
+While the form is collapsed, the **window title** mirrors the running search status — e.g. `Locate — 42 files, 318 matches, 9,213 skipped (running)` — so you always see progress without having to expand the form. The taskbar/Alt+Tab title shows the same string.
 
 ---
 

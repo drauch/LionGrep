@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -24,6 +25,13 @@ public partial class MainViewModel : ObservableObject
     private readonly SettingsStore _settingsStore;
     private readonly PresetsStore _presetsStore;
     private CancellationTokenSource? _searchCts;
+
+    private long _examinedCounter;
+    private long _rejectedCounter;
+    private long _matchedCounter;
+    private long _matchCounter;
+    private readonly ConcurrentQueue<FileMatchViewModel> _pendingResults = new();
+    private Microsoft.UI.Xaml.DispatcherTimer? _summaryTimer;
 
     public MainViewModel(DispatcherQueue dispatcher, RecentsStore recents, SettingsStore settingsStore, PresetsStore presetsStore)
     {
@@ -108,10 +116,11 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private GridLength _pathWidth = new(1, GridUnitType.Star);
     [ObservableProperty] private GridLength _extWidth = new(50);
     [ObservableProperty] private GridLength _encodingWidth = new(80);
-    [ObservableProperty] private GridLength _dateWidth = new(140);
+    [ObservableProperty] private GridLength _dateWidth = new(160);
 
     // ---- Status / counts ----
     [ObservableProperty] private string _resultsSummary = "No search run yet.";
+    [ObservableProperty] private string _windowTitle = "Locate";
     [ObservableProperty] private int _examinedCount;
     [ObservableProperty] private int _rejectedCount;
     [ObservableProperty] private int _matchedFileCount;
@@ -155,7 +164,7 @@ public partial class MainViewModel : ObservableObject
     {
         if (string.IsNullOrWhiteSpace(SearchPattern) && !SearchInNames)
         {
-            ResultsSummary = "Provide a search pattern.";
+            SetSummary("Provide a search pattern.");
             return;
         }
 
@@ -165,13 +174,18 @@ public partial class MainViewModel : ObservableObject
             .ToList();
         if (roots.Count == 0)
         {
-            ResultsSummary = "Provide at least one directory in 'Search in'.";
+            SetSummary("Provide at least one directory in 'Search in'.");
             return;
         }
 
         OperationStarted?.Invoke(this, EventArgs.Empty);
         IsSearching = true;
         Results.Clear();
+        while (_pendingResults.TryDequeue(out _)) { }
+        Interlocked.Exchange(ref _examinedCounter, 0);
+        Interlocked.Exchange(ref _rejectedCounter, 0);
+        Interlocked.Exchange(ref _matchedCounter, 0);
+        Interlocked.Exchange(ref _matchCounter, 0);
         ExaminedCount = 0;
         RejectedCount = 0;
         MatchedFileCount = 0;
@@ -180,18 +194,12 @@ public partial class MainViewModel : ObservableObject
         var ct = _searchCts.Token;
 
         var request = BuildRequest(roots);
-        var examinedProgress = new Progress<int>(c => _dispatcher.TryEnqueue(() =>
-        {
-            if (!IsSearching) return;
-            ExaminedCount = c;
-            UpdateRunningSummary();
-        }));
-        var rejectedProgress = new Progress<int>(c => _dispatcher.TryEnqueue(() =>
-        {
-            if (!IsSearching) return;
-            RejectedCount = c;
-            UpdateRunningSummary();
-        }));
+        // SyncProgress runs handler on caller thread (worker), so updating an Interlocked counter is essentially free
+        // and avoids flooding the UI dispatcher with one item per file.
+        var examinedProgress = new SyncProgress<int>(c => Interlocked.Exchange(ref _examinedCounter, c));
+        var rejectedProgress = new SyncProgress<int>(c => Interlocked.Exchange(ref _rejectedCounter, c));
+
+        StartSummaryTimer();
 
         try
         {
@@ -200,44 +208,85 @@ public partial class MainViewModel : ObservableObject
                 foreach (var match in _searcher.Search(request, examinedProgress, rejectedProgress, ct))
                 {
                     ct.ThrowIfCancellationRequested();
-                    var insertion = MatchedFileCount;
-                    var vm = new FileMatchViewModel(this, match, insertion);
-                    var fc = MatchedFileCount + 1;
-                    var mc = MatchCount + match.ContentMatches.Count + match.NameMatches.Count;
-                    _dispatcher.TryEnqueue(() =>
-                    {
-                        if (!IsSearching) return;
-                        Results.Add(vm);
-                        MatchedFileCount = fc;
-                        MatchCount = mc;
-                        UpdateRunningSummary();
-                    });
+                    var insertion = (int)Interlocked.Increment(ref _matchedCounter) - 1;
+                    Interlocked.Add(ref _matchCounter, match.ContentMatches.Count + match.NameMatches.Count);
+                    _pendingResults.Enqueue(new FileMatchViewModel(this, match, insertion));
                 }
             }, ct);
-            ResultsSummary = $"{MatchedFileCount:N0} files, {MatchCount:N0} matches, {RejectedCount:N0} skipped.";
+            StopSummaryTimer();
+            DrainPendingResults();
+            UpdateCountsFromAtomic();
+            SetSummary($"{MatchedFileCount:N0} files, {MatchCount:N0} matches, {RejectedCount:N0} skipped.");
             SaveRecents();
         }
         catch (OperationCanceledException)
         {
-            ResultsSummary = $"Cancelled. {MatchedFileCount:N0} files, {MatchCount:N0} matches, {RejectedCount:N0} skipped.";
+            StopSummaryTimer();
+            DrainPendingResults();
+            UpdateCountsFromAtomic();
+            SetSummary($"Cancelled. {MatchedFileCount:N0} files, {MatchCount:N0} matches, {RejectedCount:N0} skipped.");
         }
         catch (Exception ex)
         {
-            ResultsSummary = $"Error: {ex.Message}";
+            StopSummaryTimer();
+            DrainPendingResults();
+            SetSummary($"Error: {ex.Message}");
         }
         finally
         {
+            StopSummaryTimer();
             IsSearching = false;
             _searchCts = null;
-            // Belt and suspenders: if a late-firing progress callback set the running text after our final, strip it.
-            if (ResultsSummary.EndsWith(" (running)", StringComparison.Ordinal))
-                ResultsSummary = string.Concat(ResultsSummary.AsSpan(0, ResultsSummary.Length - 10), ".");
             SearchCompleted?.Invoke(this, EventArgs.Empty);
         }
     }
 
+    private void StartSummaryTimer()
+    {
+        StopSummaryTimer();
+        _summaryTimer = new Microsoft.UI.Xaml.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(150) };
+        _summaryTimer.Tick += OnSummaryTimerTick;
+        _summaryTimer.Start();
+    }
+
+    private void StopSummaryTimer()
+    {
+        if (_summaryTimer is null) return;
+        _summaryTimer.Stop();
+        _summaryTimer.Tick -= OnSummaryTimerTick;
+        _summaryTimer = null;
+    }
+
+    private void OnSummaryTimerTick(object? sender, object e)
+    {
+        DrainPendingResults();
+        UpdateCountsFromAtomic();
+        if (IsSearching)
+            UpdateRunningSummary();
+    }
+
+    private void DrainPendingResults()
+    {
+        while (_pendingResults.TryDequeue(out var vm))
+            Results.Add(vm);
+    }
+
+    private void UpdateCountsFromAtomic()
+    {
+        ExaminedCount = (int)Interlocked.Read(ref _examinedCounter);
+        RejectedCount = (int)Interlocked.Read(ref _rejectedCounter);
+        MatchedFileCount = (int)Interlocked.Read(ref _matchedCounter);
+        MatchCount = (int)Interlocked.Read(ref _matchCounter);
+    }
+
     private void UpdateRunningSummary() =>
-        ResultsSummary = $"{MatchedFileCount:N0} files, {MatchCount:N0} matches, {RejectedCount:N0} skipped (running)";
+        SetSummary($"{MatchedFileCount:N0} files, {MatchCount:N0} matches, {RejectedCount:N0} skipped (running)");
+
+    private void SetSummary(string text)
+    {
+        ResultsSummary = text;
+        WindowTitle = text == "No search run yet." ? "Locate" : "Locate — " + text;
+    }
 
     private bool CanSearch() => !IsSearching && !IsReplacing;
 
@@ -250,12 +299,12 @@ public partial class MainViewModel : ObservableObject
     {
         if (Results.Count == 0)
         {
-            ResultsSummary = "Run a search first.";
+            SetSummary("Run a search first.");
             return;
         }
         if (string.IsNullOrEmpty(SearchPattern))
         {
-            ResultsSummary = "Search pattern is empty.";
+            SetSummary("Search pattern is empty.");
             return;
         }
 
@@ -291,11 +340,11 @@ public partial class MainViewModel : ObservableObject
                 }
             });
             _recents.Add(RecentsKeyReplacePattern, ReplacePattern);
-            ResultsSummary = $"Replaced {totalReplacements:N0} matches in {filesChanged:N0} files.";
+            SetSummary($"Replaced {totalReplacements:N0} matches in {filesChanged:N0} files.");
         }
         catch (Exception ex)
         {
-            ResultsSummary = $"Replace error: {ex.Message}";
+            SetSummary($"Replace error: {ex.Message}");
         }
         finally
         {
@@ -329,7 +378,7 @@ public partial class MainViewModel : ObservableObject
         FileNamesRegex = false;
         ExcludePaths = "";
         ExcludePathsRegex = false;
-        SizeModeIndex = 0;
+        SizeModeIndex = 1;          // Less than (matches the initial app default)
         SizeKb = 256;
         SizeKbUpper = 1024;
         DateModeIndex = 0;
@@ -502,3 +551,4 @@ public partial class MainViewModel : ObservableObject
         FollowSymlinks = FollowSymlinks,
     };
 }
+

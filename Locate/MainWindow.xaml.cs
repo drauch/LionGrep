@@ -41,7 +41,7 @@ public sealed partial class MainWindow : Window
         ViewModel = new MainViewModel(DispatcherQueue, _recentsStore, _settingsStore, _presetsStore);
 
         InitializeComponent();
-        AppWindow.Resize(new SizeInt32(1280, 900));
+        AppWindow.Resize(new SizeInt32(1440, 900));
 
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
@@ -52,6 +52,11 @@ public sealed partial class MainWindow : Window
 
         ViewModel.OperationStarted += (_, _) => CollapseFormRow();
         ViewModel.SearchCompleted += (_, _) => OnSearchCompleted();
+        ViewModel.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(MainViewModel.WindowTitle))
+                Title = ViewModel.WindowTitle;
+        };
 
         Activated += OnFirstActivated;
         if (Content is FrameworkElement root)
@@ -69,19 +74,23 @@ public sealed partial class MainWindow : Window
 
     private void OnFormStackPanelLoaded(object sender, RoutedEventArgs e)
     {
-        // Defer twice to be sure: first hop runs after all queued layout work, second after any second-order layout.
         DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
         {
-            DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
-            {
-                if (!_initialFormFitDone && FormStackPanel.ActualHeight > 0)
-                {
-                    _initialFormFitDone = true;
-                    FormRow.Height = new GridLength(FormStackPanel.ActualHeight + 56);
-                }
-                SearchPatternBox.Focus(FocusState.Programmatic);
-            });
+            FitFormRow();
+            SearchPatternBox.Focus(FocusState.Programmatic);
         });
+    }
+
+    private void FitFormRow()
+    {
+        if (_initialFormFitDone) return;
+        // Force a measure pass so DesiredSize reflects the natural content height.
+        var width = FormStackPanel.ActualWidth > 0 ? FormStackPanel.ActualWidth : 1100;
+        FormStackPanel.Measure(new Windows.Foundation.Size(width, double.PositiveInfinity));
+        var height = FormStackPanel.DesiredSize.Height;
+        if (height <= 0) return;
+        _initialFormFitDone = true;
+        FormRow.Height = new GridLength(height + 56);
     }
 
     private void OnSearchCompleted()
@@ -110,10 +119,10 @@ public sealed partial class MainWindow : Window
         {
             < 600 => 0,
             < 700 => 1,
-            < 800 => 2,
-            < 900 => 3,
-            < 1000 => 4,
-            < 1200 => 5,
+            < 750 => 2,
+            < 820 => 3,
+            < 900 => 4,
+            < 1050 => 5,
             _ => 6,
         };
         if (bp == _lastBreakpoint) return;
@@ -125,7 +134,7 @@ public sealed partial class MainWindow : Window
         ViewModel.EncodingWidth = bp >= 3 ? new GridLength(80) : new GridLength(0);
         ViewModel.SizeWidth = bp >= 4 ? new GridLength(70) : new GridLength(0);
         ViewModel.PathWidth = bp >= 5 ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
-        ViewModel.DateWidth = bp >= 6 ? new GridLength(140) : new GridLength(0);
+        ViewModel.DateWidth = bp >= 6 ? new GridLength(160) : new GridLength(0);
         // Name is always visible
         ViewModel.NameWidth = new GridLength(240);
 

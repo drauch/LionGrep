@@ -2,19 +2,12 @@ using System.Collections.ObjectModel;
 using System.Text;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Locate.Core;
-using Microsoft.UI;
 using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Media;
-using Windows.UI;
 
 namespace Locate.ViewModels;
 
 public sealed class FileNameSegment
 {
-    private static readonly SolidColorBrush HighlightBg = new(Color.FromArgb(0xFF, 0xFF, 0xEB, 0x3B));
-    private static readonly SolidColorBrush HighlightFg = new(Colors.Black);
-    private static readonly SolidColorBrush TransparentBg = new(Colors.Transparent);
-
     public FileNameSegment(string text, bool isMatched)
     {
         Text = text;
@@ -23,8 +16,9 @@ public sealed class FileNameSegment
 
     public string Text { get; }
     public bool IsMatched { get; }
-    public Brush Background => IsMatched ? HighlightBg : TransparentBg;
-    public Brush? Foreground => IsMatched ? HighlightFg : null;
+
+    public Visibility MatchedVisibility => IsMatched ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility UnmatchedVisibility => IsMatched ? Visibility.Collapsed : Visibility.Visible;
 }
 
 public partial class FileMatchViewModel : ObservableObject
