@@ -28,6 +28,12 @@ public sealed partial class MainWindow : Window
     private readonly NativeMethods.SubclassProc _subclassProc;
     private int _lastBreakpoint = -1;
 
+    private readonly List<KeyboardAccelerator> _presetAccelerators = [];
+
+    private string? _sortColumn;
+    private SortDirection _sortDirection;
+    private enum SortDirection { None, Ascending, Descending }
+
     public MainWindow()
     {
         ViewModel = new MainViewModel(DispatcherQueue, _recentsStore, _settingsStore, _presetsStore);
@@ -397,7 +403,11 @@ public sealed partial class MainWindow : Window
     private void RegisterPresetHotkeys()
     {
         if (Content is not Grid root) return;
-        root.KeyboardAccelerators.Clear();
+        // Only remove the accelerators we previously added; preserve XAML-defined ones (Enter, Ctrl+Enter).
+        foreach (var accel in _presetAccelerators)
+            root.KeyboardAccelerators.Remove(accel);
+        _presetAccelerators.Clear();
+
         foreach (var preset in ViewModel.Presets)
         {
             if (string.IsNullOrEmpty(preset.Hotkey)) continue;
@@ -411,8 +421,127 @@ public sealed partial class MainWindow : Window
                 args.Handled = true;
             };
             root.KeyboardAccelerators.Add(accel);
+            _presetAccelerators.Add(accel);
         }
     }
+
+    // ---- Enter / Ctrl+Enter ----
+    private void OnEnterAccelerator(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    {
+        // If the focus is in the multi-line SearchInBox, let the TextBox keep Enter for newline insertion.
+        if (ReferenceEquals(FocusManager.GetFocusedElement(Content.XamlRoot), SearchInBox)) return;
+        args.Handled = true;
+        if (ViewModel.SearchCommand.CanExecute(null))
+            ViewModel.SearchCommand.Execute(null);
+    }
+
+    private async void OnCtrlEnterAccelerator(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    {
+        args.Handled = true;
+        await ConfirmAndReplaceAsync();
+    }
+
+    // ---- Replace with confirmation ----
+    private async void OnReplaceClicked(object sender, RoutedEventArgs e) => await ConfirmAndReplaceAsync();
+
+    private async Task ConfirmAndReplaceAsync()
+    {
+        if (!ViewModel.IsReplaceEnabled) return;
+
+        var settings = _settingsStore.Load();
+        if (!settings.DontWarnWhenReplacing)
+        {
+            var dontAsk = new CheckBox { Content = "Don't warn me again", Margin = new Thickness(0, 12, 0, 0) };
+            var content = new StackPanel();
+            content.Children.Add(new TextBlock
+            {
+                Text = $"Replace will rewrite {ViewModel.Results.Count:N0} file(s) on disk. This cannot be undone.",
+                TextWrapping = TextWrapping.Wrap,
+            });
+            content.Children.Add(dontAsk);
+            var dialog = new ContentDialog
+            {
+                XamlRoot = Content.XamlRoot,
+                Title = "Confirm replace",
+                Content = content,
+                PrimaryButtonText = "Replace",
+                CloseButtonText = "Cancel",
+                DefaultButton = ContentDialogButton.Close,
+            };
+            if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+            if (dontAsk.IsChecked == true)
+            {
+                settings.DontWarnWhenReplacing = true;
+                _settingsStore.Save(settings);
+            }
+        }
+
+        await ViewModel.ReplaceCommand.ExecuteAsync(null);
+    }
+
+    // ---- Column sort ----
+    private void OnHeaderTapped(object sender, TappedRoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: string column }) return;
+
+        if (column == _sortColumn)
+        {
+            _sortDirection = _sortDirection switch
+            {
+                SortDirection.None => SortDirection.Ascending,
+                SortDirection.Ascending => SortDirection.Descending,
+                _ => SortDirection.None,
+            };
+            if (_sortDirection == SortDirection.None) _sortColumn = null;
+        }
+        else
+        {
+            _sortColumn = column;
+            _sortDirection = SortDirection.Ascending;
+        }
+
+        ApplySort();
+        UpdateHeaderTexts();
+    }
+
+    private void ApplySort()
+    {
+        IEnumerable<FileMatchViewModel> sorted = _sortColumn switch
+        {
+            "Name" => OrderBy(x => x.FileName),
+            "Size" => OrderBy(x => x.FileLength),
+            "Matches" => OrderBy(x => x.MatchCount),
+            "Path" => OrderBy(x => x.Directory),
+            "Ext" => OrderBy(x => x.Extension),
+            "Encoding" => OrderBy(x => x.EncodingName),
+            "Date" => OrderBy(x => x.FileLastWriteTime),
+            _ => ViewModel.Results.OrderBy(x => x.InsertionIndex),
+        };
+        var arr = sorted.ToList();
+        ViewModel.Results.Clear();
+        foreach (var r in arr) ViewModel.Results.Add(r);
+    }
+
+    private IOrderedEnumerable<FileMatchViewModel> OrderBy<TKey>(Func<FileMatchViewModel, TKey> key) =>
+        _sortDirection == SortDirection.Descending
+            ? ViewModel.Results.OrderByDescending(key)
+            : ViewModel.Results.OrderBy(key);
+
+    private void UpdateHeaderTexts()
+    {
+        NameHeader.Text = HeaderText("Name", "Name");
+        SizeHeader.Text = HeaderText("Size", "Size");
+        MatchesHeader.Text = HeaderText("Matches", "Matches");
+        PathHeader.Text = HeaderText("Path", "Path");
+        ExtHeader.Text = HeaderText("Ext", "Ext");
+        EncodingHeader.Text = HeaderText("Encoding", "Encoding");
+        DateHeader.Text = HeaderText("Date", "Date modified");
+    }
+
+    private string HeaderText(string column, string display) =>
+        column == _sortColumn
+            ? (_sortDirection == SortDirection.Ascending ? $"{display} ▲" : $"{display} ▼")
+            : display;
 
     private static bool TryParseHotkey(string hotkey, out VirtualKey key, out VirtualKeyModifiers modifiers)
     {

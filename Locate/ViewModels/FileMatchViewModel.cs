@@ -10,15 +10,35 @@ public partial class FileMatchViewModel : ObservableObject
 {
     private readonly FileMatch _model;
 
-    public FileMatchViewModel(MainViewModel parent, FileMatch model)
+    public FileMatchViewModel(MainViewModel parent, FileMatch model, int insertionIndex)
     {
         Parent = parent;
         _model = model;
+        InsertionIndex = insertionIndex;
         Lines = new ObservableCollection<LineMatchViewModel>(
             model.ContentMatches.Select(m => new LineMatchViewModel(model.Path, m)));
     }
 
     public MainViewModel Parent { get; }
+    public int InsertionIndex { get; }
+
+    public long FileLength
+    {
+        get
+        {
+            try { return new FileInfo(_model.Path).Length; }
+            catch { return 0; }
+        }
+    }
+
+    public DateTime FileLastWriteTime
+    {
+        get
+        {
+            try { return new FileInfo(_model.Path).LastWriteTime; }
+            catch { return DateTime.MinValue; }
+        }
+    }
 
     public string Path => _model.Path;
     public string FileName => System.IO.Path.GetFileName(_model.Path);

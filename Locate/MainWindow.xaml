@@ -15,9 +15,13 @@
     </Window.SystemBackdrop>
 
     <Grid x:Name="RootGrid">
+        <Grid.KeyboardAccelerators>
+            <KeyboardAccelerator Key="Enter" Invoked="OnEnterAccelerator" />
+            <KeyboardAccelerator Key="Enter" Modifiers="Control" Invoked="OnCtrlEnterAccelerator" />
+        </Grid.KeyboardAccelerators>
         <Grid.RowDefinitions>
             <RowDefinition Height="32" />
-            <RowDefinition x:Name="FormRow" Height="*" MinHeight="0" />
+            <RowDefinition x:Name="FormRow" Height="2*" MinHeight="0" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" MinHeight="120" />
         </Grid.RowDefinitions>
@@ -40,7 +44,71 @@
             <Style x:Key="CompactCheckBox" TargetType="CheckBox">
                 <Setter Property="FontSize" Value="12" />
                 <Setter Property="MinHeight" Value="0" />
-                <Setter Property="Padding" Value="6,1,0,1" />
+                <Setter Property="Padding" Value="6,0,0,0" />
+                <Setter Property="VerticalContentAlignment" Value="Center" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="CheckBox">
+                            <Grid x:Name="RootGrid" Background="{TemplateBinding Background}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Border x:Name="NormalRectangle"
+                                        Background="Transparent"
+                                        BorderBrush="{ThemeResource ControlStrongStrokeColorDefaultBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="3"
+                                        Width="13" Height="13"
+                                        VerticalAlignment="Center" />
+                                <FontIcon x:Name="CheckGlyph" Grid.Column="0"
+                                          Glyph="&#xE73E;" FontSize="9"
+                                          Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
+                                          Visibility="Collapsed"
+                                          VerticalAlignment="Center"
+                                          HorizontalAlignment="Center" />
+                                <ContentPresenter Grid.Column="1"
+                                                  Content="{TemplateBinding Content}"
+                                                  Margin="{TemplateBinding Padding}"
+                                                  FontSize="{TemplateBinding FontSize}"
+                                                  Foreground="{TemplateBinding Foreground}"
+                                                  VerticalAlignment="Center" />
+                                <VisualStateManager.VisualStateGroups>
+                                    <VisualStateGroup x:Name="CommonStates">
+                                        <VisualState x:Name="Normal" />
+                                        <VisualState x:Name="PointerOver">
+                                            <VisualState.Setters>
+                                                <Setter Target="NormalRectangle.BorderBrush" Value="{ThemeResource ControlStrokeColorDefaultBrush}" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                        <VisualState x:Name="Pressed" />
+                                        <VisualState x:Name="Disabled">
+                                            <VisualState.Setters>
+                                                <Setter Target="RootGrid.Opacity" Value="0.4" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                    </VisualStateGroup>
+                                    <VisualStateGroup x:Name="CheckStates">
+                                        <VisualState x:Name="Unchecked" />
+                                        <VisualState x:Name="Checked">
+                                            <VisualState.Setters>
+                                                <Setter Target="NormalRectangle.Background" Value="{ThemeResource AccentFillColorDefaultBrush}" />
+                                                <Setter Target="NormalRectangle.BorderBrush" Value="{ThemeResource AccentFillColorDefaultBrush}" />
+                                                <Setter Target="CheckGlyph.Visibility" Value="Visible" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                        <VisualState x:Name="Indeterminate">
+                                            <VisualState.Setters>
+                                                <Setter Target="NormalRectangle.Background" Value="{ThemeResource AccentFillColorDefaultBrush}" />
+                                                <Setter Target="NormalRectangle.BorderBrush" Value="{ThemeResource AccentFillColorDefaultBrush}" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                    </VisualStateGroup>
+                                </VisualStateManager.VisualStateGroups>
+                            </Grid>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
             </Style>
             <Style x:Key="ToolIconButton" TargetType="Button">
                 <Setter Property="Background" Value="Transparent" />
@@ -52,6 +120,8 @@
             <Style x:Key="RecentsButton" TargetType="Button">
                 <Setter Property="Padding" Value="6,4" />
                 <Setter Property="MinWidth" Value="0" />
+                <Setter Property="MinHeight" Value="32" />
+                <Setter Property="VerticalAlignment" Value="Top" />
             </Style>
             <Style x:Key="SmallButton" TargetType="Button">
                 <Setter Property="FontSize" Value="11" />
@@ -116,7 +186,7 @@
                                  FontSize="12" />
                         <ToggleButton Grid.Column="2" VerticalAlignment="Top"
                                       IsChecked="{x:Bind ViewModel.IsSearchInExpanded, Mode=TwoWay}"
-                                      Padding="6,4" MinWidth="0"
+                                      Padding="6,4" MinWidth="0" MinHeight="32"
                                       ToolTipService.ToolTip="Expand / collapse">
                             <FontIcon Glyph="&#xE740;" FontSize="10" />
                         </ToggleButton>
@@ -322,7 +392,8 @@
                             <TextBlock Text="Cancel" />
                         </StackPanel>
                     </Button>
-                    <Button Command="{x:Bind ViewModel.ReplaceCommand}">
+                    <Button Click="OnReplaceClicked"
+                            IsEnabled="{x:Bind ViewModel.IsReplaceEnabled, Mode=OneWay}">
                         <StackPanel Orientation="Horizontal" Spacing="4">
                             <FontIcon Glyph="&#xE74E;" FontSize="12" />
                             <TextBlock Text="Replace" />
@@ -372,19 +443,26 @@
                         <ColumnDefinition Width="4" />
                         <ColumnDefinition Width="{x:Bind ViewModel.DateWidth, Mode=OneWay}" />
                     </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="1" Text="Name" FontWeight="SemiBold" FontSize="12" />
+                    <TextBlock x:Name="NameHeader" Grid.Column="1" Text="Name" FontWeight="SemiBold" FontSize="12"
+                               Tag="Name" Tapped="OnHeaderTapped" />
                     <lc:ColumnResizer Grid.Column="2" Style="{StaticResource ColumnResizer}" DragDelta="OnNameThumbDragDelta" />
-                    <TextBlock Grid.Column="3" Text="Size" FontWeight="SemiBold" FontSize="12" />
+                    <TextBlock x:Name="SizeHeader" Grid.Column="3" Text="Size" FontWeight="SemiBold" FontSize="12"
+                               Tag="Size" Tapped="OnHeaderTapped" />
                     <lc:ColumnResizer Grid.Column="4" Style="{StaticResource ColumnResizer}" DragDelta="OnSizeThumbDragDelta" />
-                    <TextBlock Grid.Column="5" Text="Matches" FontWeight="SemiBold" FontSize="12" />
+                    <TextBlock x:Name="MatchesHeader" Grid.Column="5" Text="Matches" FontWeight="SemiBold" FontSize="12"
+                               Tag="Matches" Tapped="OnHeaderTapped" />
                     <lc:ColumnResizer Grid.Column="6" Style="{StaticResource ColumnResizer}" DragDelta="OnMatchesThumbDragDelta" />
-                    <TextBlock Grid.Column="7" Text="Path" FontWeight="SemiBold" FontSize="12" />
+                    <TextBlock x:Name="PathHeader" Grid.Column="7" Text="Path" FontWeight="SemiBold" FontSize="12"
+                               Tag="Path" Tapped="OnHeaderTapped" />
                     <lc:ColumnResizer Grid.Column="8" Style="{StaticResource ColumnResizer}" DragDelta="OnPathThumbDragDelta" />
-                    <TextBlock Grid.Column="9" Text="Ext" FontWeight="SemiBold" FontSize="12" />
+                    <TextBlock x:Name="ExtHeader" Grid.Column="9" Text="Ext" FontWeight="SemiBold" FontSize="12"
+                               Tag="Ext" Tapped="OnHeaderTapped" />
                     <lc:ColumnResizer Grid.Column="10" Style="{StaticResource ColumnResizer}" DragDelta="OnExtThumbDragDelta" />
-                    <TextBlock Grid.Column="11" Text="Encoding" FontWeight="SemiBold" FontSize="12" />
+                    <TextBlock x:Name="EncodingHeader" Grid.Column="11" Text="Encoding" FontWeight="SemiBold" FontSize="12"
+                               Tag="Encoding" Tapped="OnHeaderTapped" />
                     <lc:ColumnResizer Grid.Column="12" Style="{StaticResource ColumnResizer}" DragDelta="OnEncodingThumbDragDelta" />
-                    <TextBlock Grid.Column="13" Text="Date modified" FontWeight="SemiBold" FontSize="12" />
+                    <TextBlock x:Name="DateHeader" Grid.Column="13" Text="Date modified" FontWeight="SemiBold" FontSize="12"
+                               Tag="Date" Tapped="OnHeaderTapped" />
                 </Grid>
 
                 <ListView x:Name="ResultsList" Grid.Row="1"

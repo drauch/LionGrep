@@ -31,6 +31,7 @@ public partial class MainViewModel : ObservableObject
         _recents = recents;
         _settingsStore = settingsStore;
         _presetsStore = presetsStore;
+        Results.CollectionChanged += (_, _) => RecomputeReplaceEnabled();
         ReloadPresets();
         var settings = _settingsStore.Load();
         if (settings.LastForm is { } last)
@@ -128,6 +129,13 @@ public partial class MainViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(ReplaceCommand))]
     private bool _isReplacing;
 
+    [ObservableProperty] private bool _isReplaceEnabled;
+
+    partial void OnIsSearchingChanged(bool value) => RecomputeReplaceEnabled();
+    partial void OnIsReplacingChanged(bool value) => RecomputeReplaceEnabled();
+    private void RecomputeReplaceEnabled() =>
+        IsReplaceEnabled = !IsSearching && !IsReplacing && Results.Count > 0;
+
     public Visibility SearchButtonVisibility => IsSearching ? Visibility.Collapsed : Visibility.Visible;
     public Visibility CancelButtonVisibility => IsSearching ? Visibility.Visible : Visibility.Collapsed;
 
@@ -180,7 +188,8 @@ public partial class MainViewModel : ObservableObject
                 foreach (var match in _searcher.Search(request, progress, ct))
                 {
                     ct.ThrowIfCancellationRequested();
-                    var vm = new FileMatchViewModel(this, match);
+                    var insertion = MatchedFileCount;
+                    var vm = new FileMatchViewModel(this, match, insertion);
                     var fc = MatchedFileCount + 1;
                     var mc = MatchCount + match.ContentMatches.Count + match.NameMatches.Count;
                     _dispatcher.TryEnqueue(() =>
