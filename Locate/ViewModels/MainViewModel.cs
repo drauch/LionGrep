@@ -57,6 +57,7 @@ public partial class MainViewModel : ObservableObject
             last.ApplyFilter = true;
             ApplyPreset(last);
         }
+        UpdateWindowTitle();
     }
 
     public RecentsStore Recents => _recents;
@@ -278,8 +279,7 @@ public partial class MainViewModel : ObservableObject
             StopSummaryTimer();
             DrainPendingResults();
             UpdateCountsFromAtomic();
-            var label = invert ? "non-matching files" : (isFileList ? "matches in found files" : "matches");
-            SetSummary($"{MatchedFileCount:N0} files, {MatchCount:N0} {label}, {RejectedCount:N0} skipped.");
+            SetSummary(BuildSummary(running: false));
             SaveRecents();
         }
         catch (OperationCanceledException)
@@ -287,7 +287,7 @@ public partial class MainViewModel : ObservableObject
             StopSummaryTimer();
             DrainPendingResults();
             UpdateCountsFromAtomic();
-            SetSummary($"Cancelled. {MatchedFileCount:N0} files, {MatchCount:N0} matches, {RejectedCount:N0} skipped.");
+            SetSummary("Cancelled — " + BuildSummary(running: false));
         }
         catch (Exception ex)
         {
@@ -342,13 +342,32 @@ public partial class MainViewModel : ObservableObject
         MatchCount = (int)Interlocked.Read(ref _matchCounter);
     }
 
-    private void UpdateRunningSummary() =>
-        SetSummary($"{MatchedFileCount:N0} files, {MatchCount:N0} matches, {RejectedCount:N0} skipped (running)");
+    private void UpdateRunningSummary() => SetSummary(BuildSummary(running: true));
+
+    /// <summary>
+    /// Format: "224 matches in 65 files (76 files searched, 50662 skipped)".
+    /// "files searched" is the post-filter examined count (what the searcher actually opened).
+    /// </summary>
+    private string BuildSummary(bool running)
+    {
+        var trail = running ? " (running)" : "";
+        return $"{MatchCount:N0} matches in {MatchedFileCount:N0} files "
+             + $"({ExaminedCount:N0} files searched, {RejectedCount:N0} skipped){trail}";
+    }
 
     private void SetSummary(string text)
     {
         ResultsSummary = text;
-        WindowTitle = text == "No search run yet." ? "Locate" : "Locate — " + text;
+    }
+
+    partial void OnSearchInChanged(string value) => UpdateWindowTitle();
+
+    private void UpdateWindowTitle()
+    {
+        var firstRoot = SearchIn?
+            .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .FirstOrDefault();
+        WindowTitle = string.IsNullOrWhiteSpace(firstRoot) ? "Locate" : $"Locate — {firstRoot}";
     }
 
     private bool CanSearch() => !IsSearching && !IsReplacing;

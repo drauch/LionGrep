@@ -515,12 +515,14 @@ public sealed partial class MainWindow : Window
         {
             try
             {
-                // Built-in shell32 "Open With" dialog. No COM, just rundll32.
+                // ShellExecute with verb "openas" is the supported modern path to the
+                // Windows "Open With" picker. The legacy rundll32 shell32.dll,OpenAs_RunDLL
+                // route is unreliable on Win11.
                 System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
                 {
-                    FileName = "rundll32.exe",
-                    Arguments = $"shell32.dll,OpenAs_RunDLL \"{f.Path}\"",
-                    UseShellExecute = false,
+                    FileName = f.Path,
+                    Verb = "openas",
+                    UseShellExecute = true,
                 });
             }
             catch { /* ignore */ }

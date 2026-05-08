@@ -115,9 +115,19 @@ Undo is disabled until a successful **Replace with backups** has produced at lea
 
 ---
 
-## 5. The "Skipped" count — what counts and what doesn't
+## 5. The status line — files searched / matches / skipped
 
-The status line shows `X files, Y matches, Z skipped`. **Skipped** is the count of files that were considered but excluded from the search.
+The status line at the right end of the **SEARCH RESULTS** row reads:
+`Y matches in N files (S files searched, K skipped)`.
+
+- **N files** — files that produced a match.
+- **Y matches** — total individual hits (a file contributing 12 matched lines counts 12).
+- **S files searched** — files that passed all enumeration filters and were actually opened by the searcher (≥ N).
+- **K skipped** — files considered but filtered out (see breakdown below).
+
+The window title separately shows the first non-empty line of **Search in** so you always know which root the open Locate window is searching against, even when many windows are open.
+
+**Skipped** is the count of files that were considered but excluded from the search.
 
 **Counted as Skipped:**
 - Files filtered out by the **File names** include pattern.
@@ -133,6 +143,8 @@ The status line shows `X files, Y matches, Z skipped`. **Skipped** is the count 
 - Files that errored (in use, > 2 GiB, access denied) — silently skipped.
 
 **Rule of thumb:** "Skipped" answers the question *"how many files did we look at and decide to filter out?"* It does not include files we never saw because a higher-level predicate told us not to recurse.
+
+**Why grepWin reports more skipped files for the same query.** grepWin walks **into** every directory and rejects each file individually, so files inside `bin`, `obj`, `.git`, `packages`, etc. inflate its skipped count. Locate's `ShouldRecursePredicate` prunes those subtrees from enumeration entirely — the files are never seen by the OS, never counted, and never paid for. Same physical results, fewer syscalls, smaller skipped number.
 
 ---
 
