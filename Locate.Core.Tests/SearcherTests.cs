@@ -333,6 +333,32 @@ public class SearcherTests
     }
 
     [Test]
+    public void Producer_NonOceException_PropagatesToCaller_NotSilentlySwallowed()
+    {
+        // R8 — workers throwing anything other than OperationCanceledException used to fault the
+        // producer Task, then DrainQueue's `try { producer.Wait(); } catch { /* observed */ }` would
+        // silently swallow it, leaving the user with "0 matches" and zero indication of failure.
+        // The fix re-raises non-OCE exceptions through the consumer-side iterator.
+        Touch("a.txt", "anything\n");
+        Touch("b.txt", "anything\n");
+
+        var throwingSearcher = new Searcher(_ => new ThrowingMatcher());
+        Assert.Throws<AggregateException>(() =>
+        {
+            foreach (var _ in throwingSearcher.Search(new SearchRequest(
+                Roots: [_root],
+                Enumeration: new FileEnumerationOptions(),
+                Search: new SearchOptions { Pattern = "anything" }))) { }
+        });
+    }
+
+    private sealed class ThrowingMatcher : IMatcher
+    {
+        public void FindMatches(ReadOnlySpan<char> line, ICollection<MatchSpan> destination)
+            => throw new InvalidOperationException("intentional test failure");
+    }
+
+    [Test]
     public void Parallel_AllMatchesYielded_NoDuplicates_NoDrops()
     {
         // Force enough files that the parallel scheduler will dispatch across multiple workers.

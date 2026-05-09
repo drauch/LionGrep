@@ -11,6 +11,12 @@ public sealed class Searcher
 {
     private readonly FileEnumerator _enumerator = new();
     private readonly FileSearcher _fileSearcher = new();
+    private readonly Func<SearchOptions, IMatcher> _matcherFactory;
+
+    public Searcher() : this(MatcherFactory.Create) { }
+
+    /// <summary>Test hook — production callers should use the parameterless constructor.</summary>
+    internal Searcher(Func<SearchOptions, IMatcher> matcherFactory) => _matcherFactory = matcherFactory;
 
     public IEnumerable<FileMatch> Search(SearchRequest request, CancellationToken ct = default)
         => Search(request, onFileExamined: null, onFileRejected: null, ct);
@@ -22,7 +28,7 @@ public sealed class Searcher
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        var matcher = MatcherFactory.Create(request.Search);
+        var matcher = _matcherFactory(request.Search);
         var hasContentPattern = !string.IsNullOrEmpty(request.Search.Pattern);
 
         // Combined "skipped" count = files filter-rejected by the enumerator + files skipped by the binary filter.
@@ -78,7 +84,7 @@ public sealed class Searcher
         ArgumentNullException.ThrowIfNull(paths);
         ArgumentNullException.ThrowIfNull(options);
 
-        var matcher = MatcherFactory.Create(options);
+        var matcher = _matcherFactory(options);
         var hasContentPattern = !string.IsNullOrEmpty(options.Pattern);
         long examined = 0;
         long binarySkipped = 0;
@@ -177,9 +183,29 @@ public sealed class Searcher
             // it doesn't keep working on a queue nobody's reading.
             linkedCts.Cancel();
             queue.Dispose();
-            try { producer.Wait(); } catch { /* observed */ }
+            ObserveProducerOrRethrow(producer);
             linkedCts.Dispose();
         }
+    }
+
+    /// <summary>
+    /// Awaits the producer task and re-raises non-cancellation exceptions so the caller's foreach
+    /// surfaces engine bugs / unexpected worker failures instead of silently producing zero results.
+    /// Cancellation faults (any flavour of <see cref="OperationCanceledException"/>) are absorbed.
+    /// </summary>
+    private static void ObserveProducerOrRethrow(Task producer)
+    {
+        try
+        {
+            producer.Wait();
+        }
+        catch (AggregateException ag)
+            when (ag.Flatten().InnerExceptions.All(e => e is OperationCanceledException))
+        {
+            /* expected on cancel — no real failure */
+        }
+        // Any other exception type — including unexpected exceptions wrapped by Parallel.ForEach
+        // and the producer's Task.Run — propagates out for the caller's catch block to surface.
     }
 
     private (FileMatch? Match, bool WasBinary) MatchFile(
