@@ -48,12 +48,7 @@ internal sealed class RegexMatcher : IMatcher
         }
     }
 
-    private static bool IsAllAscii(string s)
-    {
-        foreach (var c in s)
-            if (c >= 128) return false;
-        return true;
-    }
+    private static bool IsAllAscii(string s) => Ascii.IsValid(s.AsSpan());
 
     private static byte[] BuildAsciiLowerBytes(string s)
     {

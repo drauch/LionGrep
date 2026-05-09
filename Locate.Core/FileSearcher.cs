@@ -309,13 +309,7 @@ public sealed class FileSearcher
         (uint)((b | 0x20) - (byte)'a') <= 25 ||
         b == (byte)'_';
 
-    private static bool IsAllAscii(ReadOnlySpan<byte> bytes)
-    {
-        // Vectorized scan for any byte >= 128. Returns true if none.
-        for (var i = 0; i < bytes.Length; i++)
-            if (bytes[i] >= 128) return false;
-        return true;
-    }
+    private static bool IsAllAscii(ReadOnlySpan<byte> bytes) => Ascii.IsValid(bytes);
 
     /// <summary>
     /// Multi-line search: feeds the entire file content to the matcher in one call so regex
