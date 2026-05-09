@@ -344,5 +344,4 @@ See `Locate.Bench/README.md` for the available profiles, the patterns each bench
 - Replace > 4 MiB — needs streamed temp-file rewrite.
 - Parallel `BatchReplacer` orchestrator (current implementation is sequential).
 - Global system-wide hotkeys for presets (in-app only today).
-- Live-update of preset name in the Settings list (Preset doesn't implement `INotifyPropertyChanged` yet).
 - Live re-fit of the form/results splitter when WrapPanel content reflows on width change (form-fit only runs on first activation).
