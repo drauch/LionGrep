@@ -23,6 +23,13 @@ public class RegexLiteralExtractorTests
     [TestCase(@"foo${3}",          ExpectedResult = "foo")]
     [TestCase(@"foo|{3}",          ExpectedResult = "<none>")]   // top-level alternation kills the prefilter regardless
     [TestCase(@"foo}{3}",          ExpectedResult = "foo")]      // bare '}' from inside a class context
+    // R3 — {n} (n>=2) on a literal char in the middle of a run breaks contiguity for everything
+    // AFTER the quantified char. The run still keeps the quantified char itself (it appears at
+    // least once in any match), so "foa{2}b" → "foa" (matches "foaab", which contains "foa" but
+    // NOT "foab"). The previous extractor produced "foab" and silently dropped real matches.
+    [TestCase(@"foa{2}b",          ExpectedResult = "foa")]
+    [TestCase(@"foo\.{3}bar",      ExpectedResult = "foo.")]
+    [TestCase(@"a{1}b",            ExpectedResult = "ab")]   // {1} is exactly-once; the run continues
     public string ExtractsRequiredLiteral(string pattern)
         => RegexLiteralExtractor.TryExtractRequiredLiteral(pattern) ?? "<none>";
 

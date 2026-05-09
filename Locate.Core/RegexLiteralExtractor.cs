@@ -53,7 +53,9 @@ internal static class RegexLiteralExtractor
                     continue;
                 }
                 current.Append(InterpretEscaped(next));
+                var escapeBreaksRun = IsRepeatingQuantifier(pattern, afterEscape);
                 i = SkipQuantifierIfAny(pattern, afterEscape);
+                if (escapeBreaksRun) EndRun(current, ref best);
                 continue;
             }
 
@@ -105,7 +107,13 @@ internal static class RegexLiteralExtractor
                         continue;
                     }
                     current.Append(c);
+                    // If a {n>1} or {n,m>1} follows, the char is required AT LEAST n times — meaning the
+                    // run can't continue with the next pattern char as if it were adjacent (e.g. "foa{2}b"
+                    // matches "foaab", which doesn't contain the substring "foab"). End the run so we
+                    // don't claim a non-existent contiguous literal.
+                    var brokeRun = IsRepeatingQuantifier(pattern, quantPos);
                     i = SkipQuantifierIfAny(pattern, quantPos);
+                    if (brokeRun) EndRun(current, ref best);
                     continue;
                 }
             }
@@ -138,6 +146,27 @@ internal static class RegexLiteralExtractor
         '0' => '\0',
         _ => c,
     };
+
+    /// <summary>True iff a quantifier at <paramref name="pos"/> repeats the preceding atom more than
+    /// once — i.e. the atom appears ≥ 2 times in the match. After such a quantifier the previous run
+    /// can't be claimed as a contiguous literal: <c>foa{2}b</c> matches <c>foaab</c>, but the
+    /// substring <c>foab</c> isn't in <c>foaab</c>. <c>?</c>, <c>*</c>, <c>+</c>, <c>{1}</c>,
+    /// <c>{0,1}</c>, <c>{0,n}</c> all leave the prefix contiguous and return false here.</summary>
+    private static bool IsRepeatingQuantifier(string pattern, int pos)
+    {
+        if (pos >= pattern.Length) return false;
+        if (pattern[pos] != '{') return false;            // ?, *, + each repeat 0/1 times — prefix stays contiguous
+        var close = pattern.IndexOf('}', pos);
+        if (close < 0) return false;
+        var inside = pattern.AsSpan(pos + 1, close - pos - 1);
+        if (inside.Length == 0) return false;
+        // Parse minimum count. {0}, {0,m}, {1}, {1,m} all keep the prefix contiguous; anything else
+        // (≥ 2 forced repetitions of the just-appended char) breaks contiguity.
+        var commaIndex = inside.IndexOf(',');
+        var minSpan = commaIndex < 0 ? inside : inside[..commaIndex];
+        if (!int.TryParse(minSpan, out var min)) return false;
+        return min >= 2;
+    }
 
     /// <summary>True iff a quantifier starting at <paramref name="pos"/> makes the preceding atom
     /// optional (allows zero occurrences).</summary>
