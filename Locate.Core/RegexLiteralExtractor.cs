@@ -73,9 +73,13 @@ internal static class RegexLiteralExtractor
 
                 case '{':
                     // A bare '{' shouldn't appear without a preceding atom. End run defensively and skip.
+                    // SkipQuantifierIfAny may advance past the closing '}' to pattern.Length when the
+                    // quantifier ends the pattern (e.g. "foo.{3}"); we must NOT then read pattern[i]
+                    // — that's a guaranteed IndexOutOfRangeException.
                     EndRun(current, ref best);
                     i = SkipQuantifierIfAny(pattern, i);
-                    if (i == pattern.Length - 1 || pattern[i] == '{') i++; // ensure progress
+                    if (i >= pattern.Length) continue;
+                    if (pattern[i] == '{') i++;             // ensure forward progress on adjacent bare '{'
                     continue;
 
                 case '(':

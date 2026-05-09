@@ -18,6 +18,11 @@ public class RegexLiteralExtractorTests
     [TestCase(@"abc\..+xyz",       ExpectedResult = "abc.")]
     [TestCase(@"\babcdef\b",       ExpectedResult = "abcdef")]
     [TestCase(@"foo\nbar",         ExpectedResult = "foo\nbar")]
+    // R2 — patterns ending with {n} after a metachar used to crash with IndexOutOfRangeException.
+    [TestCase(@"foo.{3}",          ExpectedResult = "foo")]
+    [TestCase(@"foo${3}",          ExpectedResult = "foo")]
+    [TestCase(@"foo|{3}",          ExpectedResult = "<none>")]   // top-level alternation kills the prefilter regardless
+    [TestCase(@"foo}{3}",          ExpectedResult = "foo")]      // bare '}' from inside a class context
     public string ExtractsRequiredLiteral(string pattern)
         => RegexLiteralExtractor.TryExtractRequiredLiteral(pattern) ?? "<none>";
 
