@@ -329,10 +329,14 @@ public partial class MainViewModel : ObservableObject
         string? singleRoot = null;
         if (!isFileList)
         {
-            roots = SearchIn
+            var rawRoots = SearchIn
                 .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                 .Where(s => s.Length > 0)
                 .ToList();
+            // Drop redundant roots (descendants and exact dups) before passing to the engine. Saves
+            // double-walking shared subtrees and prevents duplicate result rows. The Search-in
+            // textbox keeps the user's literal input so re-edit / save-as-preset are unaffected.
+            roots = Locate.Core.Logic.PathPrefixDedup.Remove(rawRoots);
             if (roots.Count == 0)
             {
                 SetSummary("Provide at least one directory in 'Search in'.");

@@ -24,7 +24,7 @@ The form is divided by three labeled headers. They map directly to the three gro
 
 ### 2.1 Where
 
-- **Search in** — one or more directory paths. Multi-line by default; the `↕` toggle expands the box for easier multi-directory editing. The `🕐` button shows recent values.
+- **Search in** — one or more directory paths. Multi-line by default; the `↕` toggle expands the box for easier multi-directory editing. The `🕐` button shows recent values. **Redundant roots are pruned automatically before the search runs**: if both `C:\Foo` and `C:\Foo\Bar` are listed, the engine only walks `C:\Foo` (a descendant subtree is wasted work and would produce duplicate rows). Your input is preserved as-typed; only the list passed to the engine is filtered.
 - **Browse…** — opens the system folder picker and **replaces** Search-in with the chosen folder, collapsing the textbox back to single-line view. The picker is the "I want exactly this folder" gesture; if you want to add another root, paste it on a new line manually or use the recents button.
 
 ### 2.2 What
