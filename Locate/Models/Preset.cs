@@ -30,6 +30,7 @@ public sealed class Preset
     public bool ExcludePathsRegex { get; set; }
     public int SizeModeIndex { get; set; }
     public double SizeKb { get; set; } = 256;
+    public double SizeKbUpper { get; set; } = 1024;
     public int DateModeIndex { get; set; }
     public DateTime? DateFrom { get; set; }
     public DateTime? DateTo { get; set; }

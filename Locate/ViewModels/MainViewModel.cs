@@ -783,6 +783,7 @@ public partial class MainViewModel : ObservableObject
             ExcludePathsRegex = preset.ExcludePathsRegex;
             SizeModeIndex = preset.SizeModeIndex;
             SizeKb = preset.SizeKb;
+            SizeKbUpper = preset.SizeKbUpper;
             DateModeIndex = preset.DateModeIndex;
             DateFrom = preset.DateFrom;
             DateTo = preset.DateTo;
@@ -818,6 +819,7 @@ public partial class MainViewModel : ObservableObject
         ExcludePathsRegex = ExcludePathsRegex,
         SizeModeIndex = SizeModeIndex,
         SizeKb = SizeKb,
+        SizeKbUpper = SizeKbUpper,
         DateModeIndex = DateModeIndex,
         DateFrom = DateFrom?.DateTime,
         DateTo = DateTo?.DateTime,
