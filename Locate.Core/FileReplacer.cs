@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace Locate.Core;
 
@@ -23,8 +24,18 @@ public sealed class FileReplacer
         var contentBytes = bytes.AsSpan(detected.BomLength);
         var text = detected.Encoding.GetString(contentBytes);
 
-        var replacer = LineReplacerFactory.Create(context.Search, context.Replacement, context.PreserveCase);
-        var (output, count) = ProcessText(text, replacer, ct);
+        string output;
+        int count;
+        if (context.Search.UseRegex && context.Search.DotMatchesNewline)
+        {
+            // Multi-line replace: run the regex over the whole text in one shot so dot can cross newlines.
+            (output, count) = ReplaceWholeText(text, context, ct);
+        }
+        else
+        {
+            var replacer = LineReplacerFactory.Create(context.Search, context.Replacement, context.PreserveCase);
+            (output, count) = ProcessText(text, replacer, ct);
+        }
 
         if (count == 0)
             return new ReplaceResult(path, 0);
@@ -39,6 +50,29 @@ public sealed class FileReplacer
 
         WriteAtomic(path, detected.Encoding, output, info, context.KeepFileDate);
         return new ReplaceResult(path, count, backupPath);
+    }
+
+    private static (string Output, int Count) ReplaceWholeText(string text, ReplacementContext ctx, CancellationToken ct)
+    {
+        var regex = BuildRegex(ctx.Search);
+        var count = 0;
+        var output = regex.Replace(text, match =>
+        {
+            ct.ThrowIfCancellationRequested();
+            count++;
+            var expanded = match.Result(ctx.Replacement);
+            return ctx.PreserveCase ? CasePreserver.Apply(expanded, match.Value) : expanded;
+        });
+        return (output, count);
+    }
+
+    private static Regex BuildRegex(SearchOptions options)
+    {
+        var pattern = options.WholeWord ? $@"\b(?:{options.Pattern})\b" : options.Pattern;
+        var regexOptions = RegexOptions.CultureInvariant | RegexOptions.Compiled;
+        if (!options.CaseSensitive) regexOptions |= RegexOptions.IgnoreCase;
+        if (options.DotMatchesNewline) regexOptions |= RegexOptions.Singleline;
+        return new Regex(pattern, regexOptions);
     }
 
     private static (string Output, int Count) ProcessText(string text, ILineReplacer replacer, CancellationToken ct)

@@ -135,7 +135,8 @@ public sealed class Searcher
         {
             try
             {
-                contentMatch = _fileSearcher.Search(fullPath, matcher, options.SkipBinaryFiles, out wasBinary, ct);
+                contentMatch = _fileSearcher.Search(
+                    fullPath, matcher, options.SkipBinaryFiles, options.DotMatchesNewline, out wasBinary, ct);
             }
             catch (NotSupportedException) { /* > 2 GiB; skipped for v1. */ }
             catch (IOException) { /* file in use, locked, etc. */ }

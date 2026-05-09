@@ -233,6 +233,36 @@ public class FileReplacerTests
     }
 
     [Test]
+    public void DotMatchesNewline_RegexReplacesAcrossNewlines()
+    {
+        var input = "<a>\nfoo\nbar\n</a>\n";
+        var path = Write("dmn.txt", Encoding.UTF8.GetBytes(input));
+        var ctx = new ReplacementContext(
+            Search: new SearchOptions { Pattern = "<a>.+?</a>", UseRegex = true, DotMatchesNewline = true },
+            Replacement: "<x/>");
+
+        var result = _replacer.Replace(path, ctx);
+
+        Assert.That(result.ReplacementCount, Is.EqualTo(1));
+        Assert.That(File.ReadAllText(path), Is.EqualTo("<x/>\n"));
+    }
+
+    [Test]
+    public void DotMatchesNewline_Off_DotStaysWithinLines_OnReplace()
+    {
+        var input = "<a>\nfoo\n</a>\n";
+        var path = Write("dmn-off.txt", Encoding.UTF8.GetBytes(input));
+        var ctx = new ReplacementContext(
+            Search: new SearchOptions { Pattern = "<a>.+</a>", UseRegex = true, DotMatchesNewline = false },
+            Replacement: "<x/>");
+
+        var result = _replacer.Replace(path, ctx);
+
+        Assert.That(result.ReplacementCount, Is.EqualTo(0));
+        Assert.That(File.ReadAllText(path), Is.EqualTo(input));
+    }
+
+    [Test]
     public void CreateBackup_PreservesOriginalMtime_OnTheBakFile()
     {
         var path = Write("c.txt", "needle here\n"u8.ToArray());

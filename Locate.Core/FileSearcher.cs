@@ -9,9 +9,13 @@ public sealed class FileSearcher
     private const int BinaryProbeBytes = 8192;
 
     public FileMatch? Search(string path, IMatcher matcher, CancellationToken ct = default, bool skipBinary = false)
-        => Search(path, matcher, skipBinary, out _, ct);
+        => Search(path, matcher, skipBinary, multilineMode: false, out _, ct);
 
     public FileMatch? Search(string path, IMatcher matcher, bool skipBinary, out bool wasBinarySkipped, CancellationToken ct = default)
+        => Search(path, matcher, skipBinary, multilineMode: false, out wasBinarySkipped, ct);
+
+    /// <param name="multilineMode">When true, the matcher receives the entire file content as one span — required for regex patterns that cross newlines (e.g. with `RegexOptions.Singleline`). When false, each line is matched independently.</param>
+    public FileMatch? Search(string path, IMatcher matcher, bool skipBinary, bool multilineMode, out bool wasBinarySkipped, CancellationToken ct = default)
     {
         ArgumentException.ThrowIfNullOrEmpty(path);
         ArgumentNullException.ThrowIfNull(matcher);
@@ -42,6 +46,13 @@ public sealed class FileSearcher
                 {
                     wasBinarySkipped = true;
                     return null;
+                }
+
+                if (multilineMode)
+                {
+                    // Decode the whole file at once so the regex sees newlines.
+                    var text = detected.Encoding.GetString(content);
+                    return SearchWholeText(path, text, detected.Encoding, matcher, ct);
                 }
 
                 return detected.Encoding is UTF8Encoding
@@ -115,6 +126,50 @@ public sealed class FileSearcher
         }
 
         return hits is null ? null : new FileMatch(path, encoding, hits, []);
+    }
+
+    /// <summary>
+    /// Multi-line search: feeds the entire file content to the matcher in one call so regex
+    /// patterns can match across newlines. Each emitted <see cref="LineMatch"/> is anchored to
+    /// the line where the match starts; the highlight length is clamped to that line so the UI
+    /// renders sensibly. Matches that span more lines still count as a single match.
+    /// </summary>
+    private static FileMatch? SearchWholeText(string path, string text, Encoding encoding, IMatcher matcher, CancellationToken ct)
+    {
+        var spans = new List<MatchSpan>();
+        matcher.FindMatches(text, spans);
+        if (spans.Count == 0)
+            return null;
+
+        var hits = new List<LineMatch>(spans.Count);
+        var lineStart = 0;
+        var lineNumber = 1;
+
+        foreach (var span in spans)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            // Walk forward to the line containing the match start. Spans are returned in order,
+            // so we never need to rewind.
+            while (lineStart < span.Column)
+            {
+                var nl = text.IndexOf('\n', lineStart);
+                if (nl < 0 || nl >= span.Column) break;
+                lineStart = nl + 1;
+                lineNumber++;
+            }
+
+            var lineEnd = text.IndexOf('\n', span.Column);
+            if (lineEnd < 0) lineEnd = text.Length;
+            var trimmedEnd = lineEnd;
+            if (trimmedEnd > lineStart && text[trimmedEnd - 1] == '\r') trimmedEnd--;
+
+            var lineText = text.Substring(lineStart, trimmedEnd - lineStart);
+            var columnInLine = span.Column - lineStart;
+            var highlightLength = Math.Max(0, Math.Min(span.Length, trimmedEnd - span.Column));
+            hits.Add(new LineMatch(lineNumber, columnInLine, highlightLength, lineText));
+        }
+        return new FileMatch(path, encoding, hits, []);
     }
 
     private static FileMatch? SearchDecoded(string path, ReadOnlySpan<byte> content, Encoding encoding, IMatcher matcher, CancellationToken ct)

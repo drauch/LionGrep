@@ -103,7 +103,10 @@ public sealed class FileEnumerator
 
     private static bool PassesDate(DateTime mtimeUtc, DateFilter filter)
     {
-        var fileDate = mtimeUtc.Date;
+        // Filter dates are user-thought local-time dates (the CalendarDatePicker hands us DateTimeOffsets
+        // anchored to local). Compare in local to avoid edge cases like "after midnight in local but the
+        // file's UTC mtime is still yesterday's UTC date".
+        var fileDate = mtimeUtc.ToLocalTime().Date;
         var from = filter.From.Date;
         return filter.Mode switch
         {

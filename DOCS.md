@@ -36,7 +36,7 @@ The form is divided by three labeled headers. They map directly to the three gro
   - **Case sensitive** — when off, ASCII letters and most single-char Unicode case pairs fold (e.g. `К` matches `к`). Multi-char foldings like German `ß` ↔ `ss` do **not** fold (this is intentional; matches ripgrep semantics, never culture-aware).
   - **Whole word** — match must be bounded by non-word characters (ASCII alphanumeric + underscore).
   - **Preserve case** — when replacing, reshape the replacement string to match the original's case pattern (all-lower / all-upper / Title; Mixed is left as-is).
-  - **Dot matches newline** — *(regex only)* makes `.` match `\n`. Currently line-oriented; multi-line regex matches across newlines is a v1.1 item.
+  - **Dot matches newline** — *(regex only)* feeds the entire file content to the regex in one pass so `.` (and any other expression) can match across newlines. Use for patterns like `<a>.+?</a>` that span multiple lines. Each match anchors to its starting line in the results view; the highlight is clamped to that line, but the match still counts as one hit.
   - **Search in file & sub directory names** — when on, the same **Search for** pattern is also matched against each file's relative path (with `/` separators). A file is yielded if **either** the content **or** the path matches. See §6.2 for caveats.
   - **Keep file date when replacing** — restores the original `LastWriteTime` after a replace.
 

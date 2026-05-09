@@ -186,6 +186,46 @@ public class SearcherTests
     }
 
     [Test]
+    public void DotMatchesNewline_Off_DotDoesNotCrossNewline()
+    {
+        Touch("a.txt", "begin\nmiddle\nend\n");
+
+        var results = _searcher.Search(new SearchRequest(
+            Roots: [_root],
+            Enumeration: new FileEnumerationOptions(),
+            Search: new SearchOptions
+            {
+                Pattern = "begin.+end",
+                UseRegex = true,
+                DotMatchesNewline = false,
+            })).ToList();
+
+        Assert.That(results, Is.Empty, "Without DotMatchesNewline, the dot must not cross line boundaries.");
+    }
+
+    [Test]
+    public void DotMatchesNewline_On_DotCrossesNewline_AndAnchorsToMatchStartLine()
+    {
+        Touch("a.txt", "begin\nmiddle\nend\n");
+
+        var results = _searcher.Search(new SearchRequest(
+            Roots: [_root],
+            Enumeration: new FileEnumerationOptions(),
+            Search: new SearchOptions
+            {
+                Pattern = "begin.+end",
+                UseRegex = true,
+                DotMatchesNewline = true,
+            })).ToList();
+
+        Assert.That(results, Has.Count.EqualTo(1));
+        Assert.That(results[0].ContentMatches, Has.Count.EqualTo(1));
+        var hit = results[0].ContentMatches[0];
+        Assert.That(hit.LineNumber, Is.EqualTo(1), "Match should anchor to the starting line.");
+        Assert.That(hit.LineText, Is.EqualTo("begin"));
+    }
+
+    [Test]
     public void SearchFiles_Invert_YieldsOnlyNonMatchingPathsFromInput()
     {
         var a = Touch("a.txt", "has needle\n");
