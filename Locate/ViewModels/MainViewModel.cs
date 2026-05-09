@@ -237,10 +237,11 @@ public partial class MainViewModel : ObservableObject
             }
         }
 
-        RecomputeReplaceEnabled();
-        SearchInFoundFilesCommand.NotifyCanExecuteChanged();
-        ReplaceCommand.NotifyCanExecuteChanged();
-        ReplaceWithBackupsCommand.NotifyCanExecuteChanged();
+        // FilterStatusText reads "showing {X} of {N}" — N is Results.Count, so the denominator can
+        // change even when the filtered set doesn't (a Result.Add for a file that doesn't pass the
+        // filter). Notify here. The CanExecute notifications for Replace / SearchInFound depend on
+        // FilteredResults.Count and are fired by the FilteredResults.CollectionChanged handler — no
+        // need to double-fire them on every Results change.
         OnPropertyChanged(nameof(FilterStatusText));
     }
 
