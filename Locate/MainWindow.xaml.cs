@@ -923,6 +923,16 @@ public sealed partial class MainWindow : Window
     private void OnEscapeAccelerator(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
     {
         args.Handled = true;
+        // Priority order:
+        //   1. If the filter panel is open, close it (and clear the filter via the VM hook).
+        //      This always wins so the user's first Esc gets them back to the full result set.
+        //   2. Otherwise, if a search is in flight, cancel it.
+        //   3. And always restore the form row so the search inputs are visible again.
+        if (ViewModel.IsResultFilterPanelOpen)
+        {
+            ViewModel.IsResultFilterPanelOpen = false;
+            return;
+        }
         if (ViewModel.IsSearching)
             ViewModel.CancelSearchCommand.Execute(null);
         RestoreFormRow();

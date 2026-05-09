@@ -283,7 +283,7 @@ All settings persist under `HKCU\Software\Locate`.
 |---|---|
 | **Ctrl+Enter** | Run search (works even when focus is in a multi-line input) |
 | **Ctrl+Alt+Enter** | Replace **immediately** — bypasses the 3-way confirmation dialog. No backup is created. |
-| **Escape** | Cancel the running search **and** restore the form panel. Pressing Escape repeatedly is idempotent — the form returns to the same cached natural height each time. |
+| **Escape** | Layered: first press closes the filter panel if it's open (and clears the filter); next press cancels a running search and restores the form panel. Idempotent on subsequent presses — the form returns to the same cached natural height each time. |
 | **Enter** | Default action for the focused control (newline in multi-line Search-in, etc.) |
 | **F2** etc. | Whatever you've assigned to a preset |
 | **Double-click on input field** | Show recents dropdown for that field, sized to the input's width |
