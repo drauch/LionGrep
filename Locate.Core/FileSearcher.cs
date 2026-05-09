@@ -8,6 +8,13 @@ public sealed class FileSearcher
 {
     private const int BinaryProbeBytes = 8192;
 
+    /// <summary>
+    /// Files smaller than this go through <c>File.ReadAllBytes</c> instead of mmap. mmap has fixed
+    /// per-file setup cost (Section object creation, view mapping) that dominates for small files;
+    /// ripgrep's analysis shows the same crossover. NTFS + SSD reads at this size are essentially free.
+    /// </summary>
+    private const int MmapMinBytes = 64 * 1024;
+
     public FileMatch? Search(string path, IMatcher matcher, CancellationToken ct = default, bool skipBinary = false)
         => Search(path, matcher, skipBinary, multilineMode: false, out _, ct);
 
@@ -28,6 +35,14 @@ public sealed class FileSearcher
         if (info.Length > int.MaxValue)
             throw new NotSupportedException($"Files larger than 2 GiB are not yet supported (path: {path}).");
 
+        // Small-file path: a buffered read is faster than mmap'ing per file because mmap setup cost
+        // (Section object + view mapping + Acquire/Release ceremony) dominates at this size.
+        if (info.Length < MmapMinBytes)
+        {
+            var bytes = File.ReadAllBytes(path);
+            return SearchSpan(path, bytes, matcher, skipBinary, multilineMode, ref wasBinarySkipped, ct);
+        }
+
         using var mmap = MemoryMappedFile.CreateFromFile(
             path, FileMode.Open, mapName: null, capacity: 0, MemoryMappedFileAccess.Read);
         using var view = mmap.CreateViewAccessor(0, 0, MemoryMappedFileAccess.Read);
@@ -39,36 +54,7 @@ public sealed class FileSearcher
             {
                 view.SafeMemoryMappedViewHandle.AcquirePointer(ref ptr);
                 var bytes = new ReadOnlySpan<byte>(ptr, (int)info.Length);
-                var detected = EncodingDetection.Detect(bytes);
-                var content = bytes[detected.BomLength..];
-
-                if (skipBinary && IsLikelyBinary(content, detected.Encoding))
-                {
-                    wasBinarySkipped = true;
-                    return null;
-                }
-
-                if (multilineMode)
-                {
-                    // Decode the whole file at once so the regex sees newlines.
-                    var text = detected.Encoding.GetString(content);
-                    return SearchWholeText(path, text, detected.Encoding, matcher, ct);
-                }
-
-                // Byte-level fast path for ASCII literals over UTF-8 content. ASCII bytes only ever appear
-                // as themselves in UTF-8 (never as a continuation byte), so we can scan the raw bytes with
-                // SIMD-vectorized IndexOf instead of decoding every line — a substantial win for the common
-                // case (short ASCII patterns like identifiers, file extensions, URLs).
-                if (detected.Encoding is UTF8Encoding
-                    && matcher is LiteralMatcher lit
-                    && lit.AsciiPatternBytes is { } asciiPattern)
-                {
-                    return SearchUtf8AsciiLiteral(path, content, detected.Encoding, asciiPattern, lit.CaseSensitive, lit.WholeWord, ct);
-                }
-
-                return detected.Encoding is UTF8Encoding
-                    ? SearchUtf8(path, content, detected.Encoding, matcher, ct)
-                    : SearchDecoded(path, content, detected.Encoding, matcher, ct);
+                return SearchSpan(path, bytes, matcher, skipBinary, multilineMode, ref wasBinarySkipped, ct);
             }
             finally
             {
@@ -76,6 +62,65 @@ public sealed class FileSearcher
                     view.SafeMemoryMappedViewHandle.ReleasePointer();
             }
         }
+    }
+
+    /// <summary>
+    /// Single dispatch point for "we have the file's bytes, now search them". Shared by the mmap path
+    /// (large files) and the buffered-read path (small files). The returned <see cref="FileMatch"/>
+    /// holds only decoded strings — no references to the input span — so it's safe to outlive the
+    /// underlying mmap or array.
+    /// </summary>
+    private FileMatch? SearchSpan(
+        string path, ReadOnlySpan<byte> bytes, IMatcher matcher,
+        bool skipBinary, bool multilineMode, ref bool wasBinarySkipped, CancellationToken ct)
+    {
+        var detected = EncodingDetection.Detect(bytes);
+        var content = bytes[detected.BomLength..];
+
+        if (skipBinary && IsLikelyBinary(content, detected.Encoding))
+        {
+            wasBinarySkipped = true;
+            return null;
+        }
+
+        if (multilineMode)
+        {
+            // Decode the whole file at once so the regex sees newlines.
+            var text = detected.Encoding.GetString(content);
+            return SearchWholeText(path, text, detected.Encoding, matcher, ct);
+        }
+
+        // Byte-level fast path for literal patterns over UTF-8 content. UTF-8 is self-synchronizing,
+        // so a multi-byte character's bytes only appear at that character's position — case-sensitive
+        // byte-level IndexOf is correct for ANY pattern, not just ASCII. The case-insensitive variant
+        // still requires ASCII (we'd need full Unicode case folding for non-ASCII), so we restrict
+        // case-insensitive byte search to ASCII patterns.
+        if (detected.Encoding is UTF8Encoding && matcher is LiteralMatcher lit && lit.Utf8PatternBytes.Length > 0)
+        {
+            if (lit.CaseSensitive)
+                return SearchUtf8LiteralBytes(path, content, detected.Encoding, lit.Utf8PatternBytes, ignoreCase: false, lit.WholeWord, ct);
+            if (lit.IsAsciiPattern)
+                return SearchUtf8LiteralBytes(path, content, detected.Encoding, lit.AsciiLowerPatternBytes!, ignoreCase: true, lit.WholeWord, ct);
+            // else fall through: case-insensitive non-ASCII literal — needs Unicode-aware folding.
+        }
+
+        // Regex pre-filter. If we extracted a required literal substring from the pattern, do a single
+        // SIMD-vectorized byte scan first; if the literal isn't in the file, the regex can't match and
+        // we skip the regex engine entirely. Pure win — only files that pass the pre-filter pay for
+        // line decoding + regex execution.
+        if (detected.Encoding is UTF8Encoding && matcher is RegexMatcher rm && rm.RequiredLiteralUtf8 is not null)
+        {
+            var found = rm.CaseSensitive
+                ? content.IndexOf(rm.RequiredLiteralUtf8) >= 0
+                : (rm.RequiredLiteralIsAscii
+                    ? IndexOfAsciiCaseInsensitive(content, rm.RequiredLiteralAsciiLower!) >= 0
+                    : true /* can't safely pre-filter case-insensitive non-ASCII; fall through */);
+            if (!found) return null;
+        }
+
+        return detected.Encoding is UTF8Encoding
+            ? SearchUtf8(path, content, detected.Encoding, matcher, ct)
+            : SearchDecoded(path, content, detected.Encoding, matcher, ct);
     }
 
     private static bool IsLikelyBinary(ReadOnlySpan<byte> content, Encoding encoding)
@@ -141,21 +186,22 @@ public sealed class FileSearcher
     }
 
     /// <summary>
-    /// SIMD-driven byte scan for pure-ASCII literal patterns over UTF-8 content. Skips per-line
-    /// decoding entirely; only matched lines are decoded for display. Honors case-insensitive ASCII
-    /// folding and whole-word boundaries (word chars are themselves ASCII, so a non-ASCII byte before/after
-    /// a match always counts as a non-word boundary).
+    /// SIMD-driven byte scan for literal patterns over UTF-8 content. Works for any UTF-8 pattern when
+    /// case-sensitive (UTF-8 is self-synchronizing); case-insensitive callers must pass pre-lowercased
+    /// ASCII bytes. Skips per-line decoding entirely; only matched lines are decoded for display. Honors
+    /// whole-word boundaries — word chars are themselves ASCII, so any byte ≥ 128 (i.e. part of a
+    /// non-ASCII char) always counts as a non-word boundary.
     /// </summary>
-    private static FileMatch? SearchUtf8AsciiLiteral(
+    private static FileMatch? SearchUtf8LiteralBytes(
         string path,
         ReadOnlySpan<byte> content,
         Encoding encoding,
-        byte[] asciiPattern,
-        bool caseSensitive,
+        byte[] patternBytes,
+        bool ignoreCase,
         bool wholeWord,
         CancellationToken ct)
     {
-        if (asciiPattern.Length == 0) return null;
+        if (patternBytes.Length == 0) return null;
 
         List<LineMatch>? hits = null;
 
@@ -164,17 +210,17 @@ public sealed class FileSearcher
         var lineNumber = 1;
 
         var pos = 0;
-        while (pos <= content.Length - asciiPattern.Length)
+        while (pos <= content.Length - patternBytes.Length)
         {
             ct.ThrowIfCancellationRequested();
 
-            var hitOffset = caseSensitive
-                ? content[pos..].IndexOf(asciiPattern)
-                : IndexOfAsciiCaseInsensitive(content[pos..], asciiPattern);
+            var hitOffset = ignoreCase
+                ? IndexOfAsciiCaseInsensitive(content[pos..], patternBytes)
+                : content[pos..].IndexOf(patternBytes);
             if (hitOffset < 0) break;
 
             var hitStart = pos + hitOffset;
-            var hitEnd = hitStart + asciiPattern.Length;
+            var hitEnd = hitStart + patternBytes.Length;
 
             // Whole-word: bytes outside the match must not be ASCII word chars. Any byte >= 128 is part
             // of a multi-byte UTF-8 sequence representing a non-ASCII char, which is never a word char
@@ -215,7 +261,7 @@ public sealed class FileSearcher
             var charColumn = IsAllAscii(prefix) ? prefix.Length : encoding.GetCharCount(prefix);
 
             hits ??= new List<LineMatch>();
-            hits.Add(new LineMatch(lineNumber, charColumn, asciiPattern.Length, lineText));
+            hits.Add(new LineMatch(lineNumber, charColumn, patternBytes.Length, lineText));
 
             pos = hitEnd;
         }

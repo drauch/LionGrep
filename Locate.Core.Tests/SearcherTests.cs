@@ -273,6 +273,45 @@ public class SearcherTests
     }
 
     [Test]
+    public void NonAsciiLiteral_CaseSensitive_GoesThroughByteFastPath()
+    {
+        // German umlauts in pattern; UTF-8 self-synchronization means byte-level IndexOf is safe.
+        Touch("a.txt", "Größe: 42\nGroessenangabe\nNur Größe ist Größe.\n");
+
+        var results = _searcher.Search(new SearchRequest(
+            Roots: [_root],
+            Enumeration: new FileEnumerationOptions(),
+            Search: new SearchOptions { Pattern = "Größe", CaseSensitive = true })).ToList();
+
+        Assert.That(results, Has.Count.EqualTo(1));
+        // line 1: "Größe: 42"  → 1 hit
+        // line 3: "Nur Größe ist Größe." → 2 hits
+        Assert.That(results[0].ContentMatches.Select(m => m.LineNumber).OrderBy(x => x), Is.EqualTo(new[] { 1, 3, 3 }));
+    }
+
+    [Test]
+    public void RegexPrefilter_StillReturnsAllMatches_AndIgnoresFilesWithoutLiteral()
+    {
+        Touch("hits.txt", "class Foo {}\n");           // contains "class" — passes prefilter, regex matches.
+        Touch("noclass.txt", "interface IFoo {}\n");   // no "class" — prefilter rejects without running regex.
+        Touch("noise.txt", "klass Foo\n");              // close but no cigar — prefilter rejects.
+
+        var results = _searcher.Search(new SearchRequest(
+            Roots: [_root],
+            Enumeration: new FileEnumerationOptions(),
+            Search: new SearchOptions
+            {
+                Pattern = @"class\s+\w+",
+                UseRegex = true,
+                CaseSensitive = true,
+            })).ToList();
+
+        Assert.That(results, Has.Count.EqualTo(1));
+        Assert.That(Path.GetFileName(results[0].Path), Is.EqualTo("hits.txt"));
+        Assert.That(results[0].ContentMatches, Has.Count.EqualTo(1));
+    }
+
+    [Test]
     public void Parallel_AllMatchesYielded_NoDuplicates_NoDrops()
     {
         // Force enough files that the parallel scheduler will dispatch across multiple workers.
