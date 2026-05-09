@@ -163,6 +163,56 @@ public partial class MainViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(UndoReplaceCommand))]
     private bool _hasUndoableBackups;
 
+    // ---- Validation ----
+    // Each input drives an IsXxxValid bool. When false, the corresponding XxxBorderBrush flips
+    // red and the form's IsFormValid becomes false, which gates Search and Replace can-execute.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SearchInBorderBrush))]
+    [NotifyPropertyChangedFor(nameof(IsFormValid))]
+    [NotifyCanExecuteChangedFor(nameof(SearchCommand))]
+    [NotifyCanExecuteChangedFor(nameof(InverseSearchCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ReplaceCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ReplaceWithBackupsCommand))]
+    private bool _isSearchInValid = true;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SearchPatternBorderBrush))]
+    [NotifyPropertyChangedFor(nameof(IsFormValid))]
+    [NotifyCanExecuteChangedFor(nameof(SearchCommand))]
+    [NotifyCanExecuteChangedFor(nameof(InverseSearchCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ReplaceCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ReplaceWithBackupsCommand))]
+    private bool _isSearchPatternValid = true;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(FileNamesBorderBrush))]
+    [NotifyPropertyChangedFor(nameof(IsFormValid))]
+    [NotifyCanExecuteChangedFor(nameof(SearchCommand))]
+    [NotifyCanExecuteChangedFor(nameof(InverseSearchCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ReplaceCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ReplaceWithBackupsCommand))]
+    private bool _isFileNamesValid = true;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ExcludePathsBorderBrush))]
+    [NotifyPropertyChangedFor(nameof(IsFormValid))]
+    [NotifyCanExecuteChangedFor(nameof(SearchCommand))]
+    [NotifyCanExecuteChangedFor(nameof(InverseSearchCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ReplaceCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ReplaceWithBackupsCommand))]
+    private bool _isExcludePathsValid = true;
+
+    public bool IsFormValid =>
+        IsSearchInValid && IsSearchPatternValid && IsFileNamesValid && IsExcludePathsValid;
+
+    private static readonly Microsoft.UI.Xaml.Media.SolidColorBrush InvalidInputBrush =
+        new(Microsoft.UI.Colors.IndianRed);
+
+    public Microsoft.UI.Xaml.Media.Brush? SearchInBorderBrush => IsSearchInValid ? null : InvalidInputBrush;
+    public Microsoft.UI.Xaml.Media.Brush? SearchPatternBorderBrush => IsSearchPatternValid ? null : InvalidInputBrush;
+    public Microsoft.UI.Xaml.Media.Brush? FileNamesBorderBrush => IsFileNamesValid ? null : InvalidInputBrush;
+    public Microsoft.UI.Xaml.Media.Brush? ExcludePathsBorderBrush => IsExcludePathsValid ? null : InvalidInputBrush;
+
     private readonly List<(string Path, string BackupPath, DateTime BackupMtimeUtc)> _lastBackups = [];
 
     partial void OnIsSearchingChanged(bool value) => RecomputeReplaceEnabled();
@@ -483,7 +533,62 @@ public partial class MainViewModel : ObservableObject
         ResultsSummary = text;
     }
 
-    partial void OnSearchInChanged(string value) => UpdateWindowTitle();
+    partial void OnSearchInChanged(string value)
+    {
+        UpdateWindowTitle();
+        ValidateSearchIn();
+    }
+
+    partial void OnSearchPatternChanged(string value) => ValidateSearchPattern();
+    partial void OnUseRegexChanged(bool value) => ValidateSearchPattern();
+    partial void OnFileNamesChanged(string value) => ValidateFileNames();
+    partial void OnFileNamesRegexChanged(bool value) => ValidateFileNames();
+    partial void OnExcludePathsChanged(string value) => ValidateExcludePaths();
+    partial void OnExcludePathsRegexChanged(bool value) => ValidateExcludePaths();
+
+    private void ValidateSearchIn()
+    {
+        // Empty Search-in is "no value entered yet" — not a validation error in this sense; the
+        // search itself reports "provide at least one directory". Only flag once the user has
+        // actually typed paths AND at least one of them isn't a real directory.
+        var roots = SearchIn
+            .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(s => s.Length > 0)
+            .ToList();
+        if (roots.Count == 0) { IsSearchInValid = true; return; }
+
+        foreach (var r in roots)
+        {
+            try
+            {
+                if (!System.IO.Directory.Exists(r)) { IsSearchInValid = false; return; }
+            }
+            catch { IsSearchInValid = false; return; }
+        }
+        IsSearchInValid = true;
+    }
+
+    private void ValidateSearchPattern()
+    {
+        // Plain-text patterns are always "valid" (any string parses). Regex patterns must compile.
+        IsSearchPatternValid = !UseRegex || string.IsNullOrEmpty(SearchPattern) || IsValidRegex(SearchPattern);
+    }
+
+    private void ValidateFileNames()
+    {
+        IsFileNamesValid = !FileNamesRegex || string.IsNullOrEmpty(FileNames) || IsValidRegex(FileNames);
+    }
+
+    private void ValidateExcludePaths()
+    {
+        IsExcludePathsValid = !ExcludePathsRegex || string.IsNullOrEmpty(ExcludePaths) || IsValidRegex(ExcludePaths);
+    }
+
+    private static bool IsValidRegex(string pattern)
+    {
+        try { _ = new System.Text.RegularExpressions.Regex(pattern); return true; }
+        catch { return false; }
+    }
 
     private void UpdateWindowTitle()
     {
@@ -493,7 +598,7 @@ public partial class MainViewModel : ObservableObject
         WindowTitle = string.IsNullOrWhiteSpace(firstRoot) ? "Locate" : $"Locate — {firstRoot}";
     }
 
-    private bool CanSearch() => !IsSearching && !IsReplacing;
+    private bool CanSearch() => !IsSearching && !IsReplacing && IsFormValid;
 
     [RelayCommand(CanExecute = nameof(CanCancel))]
     private void CancelSearch() => _searchCts?.Cancel();
@@ -580,7 +685,7 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
-    private bool CanReplace() => !IsSearching && !IsReplacing && FilteredResults.Count > 0;
+    private bool CanReplace() => !IsSearching && !IsReplacing && FilteredResults.Count > 0 && IsFormValid;
 
     [RelayCommand(CanExecute = nameof(CanUndoReplace))]
     private async Task UndoReplaceAsync()

@@ -27,6 +27,14 @@ The form is divided by three labeled headers. They map directly to the three gro
 - **Search in** — one or more directory paths. Multi-line by default; the `↕` toggle expands the box for easier multi-directory editing. The `🕐` button shows recent values. **Redundant roots are pruned automatically before the search runs**: if both `C:\Foo` and `C:\Foo\Bar` are listed, the engine only walks `C:\Foo` (a descendant subtree is wasted work and would produce duplicate rows). Your input is preserved as-typed; only the list passed to the engine is filtered.
 - **Browse…** — opens the system folder picker and **replaces** Search-in with the chosen folder, collapsing the textbox back to single-line view. The picker is the "I want exactly this folder" gesture; if you want to add another root, paste it on a new line manually or use the recents button.
 
+The four free-text inputs (**Search in**, **Search for**, **File names**, **Exclude paths**) get a **red 2 px border** when their content is invalid:
+
+- **Search in** — flagged when one or more lines isn't an existing directory.
+- **Search for** — flagged when **Use regex** is on and the pattern doesn't compile.
+- **File names** / **Exclude paths** — flagged when the corresponding **Regex** toggle is on and the pattern doesn't compile.
+
+Search and Replace are disabled while any input is invalid, so a malformed regex can't accidentally start a search that would crash mid-flight. Untick **Use regex** (or fix the pattern / path) and the border returns to default.
+
 ### 2.2 What
 
 - **Search for** — the match pattern.

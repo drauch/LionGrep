@@ -184,7 +184,9 @@
                                  AcceptsReturn="True" TextWrapping="Wrap"
                                  PlaceholderText="One directory per line, or click Browse"
                                  Height="{x:Bind ViewModel.SearchInBoxHeight, Mode=OneWay}"
-                                 FontSize="12" />
+                                 FontSize="12"
+                                 BorderBrush="{x:Bind ViewModel.SearchInBorderBrush, Mode=OneWay}"
+                                 BorderThickness="2" />
                         <ToggleButton Grid.Column="2" VerticalAlignment="Top"
                                       IsChecked="{x:Bind ViewModel.IsSearchInExpanded, Mode=TwoWay}"
                                       Padding="6,4" MinWidth="0" MinHeight="32"
@@ -228,7 +230,9 @@
                         <TextBox x:Name="SearchPatternBox" Grid.Row="0" Grid.Column="1"
                                  Text="{x:Bind ViewModel.SearchPattern, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                  PlaceholderText="Pattern (text or regex)"
-                                 FontSize="12" />
+                                 FontSize="12"
+                                 BorderBrush="{x:Bind ViewModel.SearchPatternBorderBrush, Mode=OneWay}"
+                                 BorderThickness="2" />
                         <Button Grid.Row="0" Grid.Column="2" Style="{StaticResource RecentsButton}" Click="OnSearchPatternRecentsClicked">
                             <FontIcon Glyph="&#xE823;" FontSize="12" />
                         </Button>
@@ -296,7 +300,9 @@
                             <TextBox x:Name="FileNamesBox" Grid.Row="0" Grid.Column="1"
                                      Text="{x:Bind ViewModel.FileNames, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                      PlaceholderText="*.cs|*.ts|!*.Generated.cs"
-                                     FontSize="12" />
+                                     FontSize="12"
+                                     BorderBrush="{x:Bind ViewModel.FileNamesBorderBrush, Mode=OneWay}"
+                                     BorderThickness="2" />
                             <Button Grid.Row="0" Grid.Column="2" Style="{StaticResource RecentsButton}" Click="OnFileNamesRecentsClicked">
                                 <FontIcon Glyph="&#xE823;" FontSize="12" />
                             </Button>
@@ -307,7 +313,9 @@
                             <TextBox x:Name="ExcludePathsBox" Grid.Row="1" Grid.Column="1"
                                      Text="{x:Bind ViewModel.ExcludePaths, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                      PlaceholderText="bin|obj|node_modules|*.tmp"
-                                     FontSize="12" />
+                                     FontSize="12"
+                                     BorderBrush="{x:Bind ViewModel.ExcludePathsBorderBrush, Mode=OneWay}"
+                                     BorderThickness="2" />
                             <Button Grid.Row="1" Grid.Column="2" Style="{StaticResource RecentsButton}" Click="OnExcludePathsRecentsClicked">
                                 <FontIcon Glyph="&#xE823;" FontSize="12" />
                             </Button>
