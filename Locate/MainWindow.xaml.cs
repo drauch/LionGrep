@@ -422,7 +422,7 @@ public sealed partial class MainWindow : Window
         WinRT.Interop.InitializeWithWindow.Initialize(picker, _windowHandle);
         var file = await picker.PickSaveFileAsync();
         if (file is null) return;
-        var csv = BuildCsv(ViewModel.Results.ToList());
+        var csv = BuildCsv(ViewModel.FilteredResults.ToList());
         await File.WriteAllTextAsync(file.Path, csv, new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
     }
 
@@ -432,7 +432,7 @@ public sealed partial class MainWindow : Window
             $"locate-{DateTime.Now:yyyyMMdd-HHmmss}.xlsx");
         try
         {
-            WriteXlsx(temp, ViewModel.Results.ToList());
+            WriteXlsx(temp, ViewModel.FilteredResults.ToList());
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
             {
                 FileName = temp,
@@ -749,7 +749,9 @@ public sealed partial class MainWindow : Window
     {
         var selected = ResultsList.SelectedItems.OfType<FileMatchViewModel>().ToList();
         if (selected.Count == 0)
-            selected = ViewModel.Results.ToList();
+            // Default to the visible (filtered) set, not the master list, so a Copy/Export with
+            // an active filter only acts on what the user can see.
+            selected = ViewModel.FilteredResults.ToList();
         return selected;
     }
 
@@ -938,7 +940,7 @@ public sealed partial class MainWindow : Window
         {
             XamlRoot = Content.XamlRoot,
             Title = "Confirm replace",
-            Content = $"Replace will rewrite {ViewModel.Results.Count:N0} file(s) on disk."
+            Content = $"Replace will rewrite {ViewModel.FilteredResults.Count:N0} file(s) on disk."
                     + Environment.NewLine + Environment.NewLine
                     + "• Replace with backups: writes a .bak copy next to each modified file (use Undo to restore)."
                     + Environment.NewLine
@@ -1001,9 +1003,7 @@ public sealed partial class MainWindow : Window
                 ? ordered.ThenByDescending(x => x.FileName)
                 : ordered.ThenBy(x => x.FileName);
         }
-        var arr = ordered.ToList();
-        ViewModel.Results.Clear();
-        foreach (var r in arr) ViewModel.Results.Add(r);
+        ViewModel.ReplaceResults(ordered.ToList());
     }
 
     private IOrderedEnumerable<FileMatchViewModel> OrderBy<TKey>(Func<FileMatchViewModel, TKey> key) =>

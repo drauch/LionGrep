@@ -208,7 +208,15 @@ Multi-select via Ctrl/Shift-click as in any ListView. Right-click on a row that 
 
 Ctrl+C is **not** bound by default — use the right-click menu (or Export buttons in the SEARCH RESULTS header) to copy/export.
 
-### 7.4 SEARCH RESULTS section header
+### 7.4 Live filter
+
+A **Filter results…** textbox sits in the SEARCH RESULTS row. It performs a case-insensitive substring match against each result's full file path **and** every matched line's text — a hit on either side keeps the file. Updates are debounced ~250 ms so typing doesn't restart the filter on every keystroke.
+
+When a filter is active, the row shows `showing X of N` next to the textbox. **Every downstream operation respects the filter**: Export to CSV, Open in Excel, copy-as-CSV, copy paths/filenames/lines, Replace, Replace with backups, Search-in-currently-found-files, and the no-selection fallback for clipboard commands all act on the visible (filtered) set, never the master.
+
+The master result set is preserved internally — clearing the filter restores the full list without re-running the search.
+
+### 7.5 SEARCH RESULTS section header
 
 Above the results table, a section header shows action buttons:
 
@@ -216,7 +224,7 @@ Above the results table, a section header shows action buttons:
 - **Export to CSV** — opens a Save As dialog and writes all results as a UTF-8 (BOM-prefixed) CSV file.
 - **Open in Excel** — writes a real `.xlsx` workbook (via ClosedXML) to `%TEMP%` and shells it open with the default `.xlsx` handler. The header row is bold with a light-grey background; columns auto-fit to the first 200 rows.
 
-### 7.5 Open files (double-click)
+### 7.6 Open files (double-click)
 
 - **Single row** — double-click opens that file in the configured editor at the first match's line/column.
 - **Multiple rows selected** — double-click prompts a confirmation dialog (`Open N files?`) before launching N editor instances. Cancel to abort.

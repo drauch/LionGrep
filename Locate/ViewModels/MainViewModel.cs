@@ -39,13 +39,15 @@ public partial class MainViewModel : ObservableObject
         _recents = recents;
         _settingsStore = settingsStore;
         _presetsStore = presetsStore;
-        Results.CollectionChanged += (_, _) =>
+        Results.CollectionChanged += OnResultsCollectionChanged;
+        FilteredResults.CollectionChanged += (_, _) =>
         {
+            // The filter shrinking the visible set should disable Replace / Search-in-found and update the status text.
             RecomputeReplaceEnabled();
-            // SearchInFound and the two replace commands depend on Results.Count.
             SearchInFoundFilesCommand.NotifyCanExecuteChanged();
             ReplaceCommand.NotifyCanExecuteChanged();
             ReplaceWithBackupsCommand.NotifyCanExecuteChanged();
+            OnPropertyChanged(nameof(FilterStatusText));
         };
         ReloadPresets();
         var settings = _settingsStore.Load();
@@ -166,12 +168,105 @@ public partial class MainViewModel : ObservableObject
     partial void OnIsSearchingChanged(bool value) => RecomputeReplaceEnabled();
     partial void OnIsReplacingChanged(bool value) => RecomputeReplaceEnabled();
     private void RecomputeReplaceEnabled() =>
-        IsReplaceEnabled = !IsSearching && !IsReplacing && Results.Count > 0;
+        IsReplaceEnabled = !IsSearching && !IsReplacing && FilteredResults.Count > 0;
 
     public Visibility SearchButtonVisibility => IsSearching ? Visibility.Collapsed : Visibility.Visible;
     public Visibility CancelButtonVisibility => IsSearching ? Visibility.Visible : Visibility.Collapsed;
 
+    /// <summary>The complete result set as the search engine yielded it (sort order preserved).</summary>
     public ObservableCollection<FileMatchViewModel> Results { get; } = [];
+
+    /// <summary>What the UI displays — equal to <see cref="Results"/> when <see cref="FilterText"/> is empty,
+    /// or a filtered subset (file path or any matched line text contains the filter, case-insensitive).</summary>
+    public ObservableCollection<FileMatchViewModel> FilteredResults { get; } = [];
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsFiltering))]
+    [NotifyPropertyChangedFor(nameof(FilterStatusText))]
+    private string _filterText = "";
+
+    public bool IsFiltering => !string.IsNullOrEmpty(FilterText);
+    public string FilterStatusText => IsFiltering
+        ? $"showing {FilteredResults.Count:N0} of {Results.Count:N0}"
+        : "";
+
+    private DispatcherTimer? _filterDebounceTimer;
+    private bool _suppressFilteredMirror;
+
+    partial void OnFilterTextChanged(string value)
+    {
+        // Debounce so we don't rebuild the filtered view on every keystroke.
+        _filterDebounceTimer?.Stop();
+        _filterDebounceTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
+        _filterDebounceTimer.Tick += (_, _) =>
+        {
+            _filterDebounceTimer.Stop();
+            RebuildFilteredResults();
+        };
+        _filterDebounceTimer.Start();
+    }
+
+    private void OnResultsCollectionChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+    {
+        // Keep FilteredResults in sync incrementally so we don't rebuild N items on each Add during search drain.
+        if (!_suppressFilteredMirror)
+        {
+            switch (e.Action)
+            {
+                case System.Collections.Specialized.NotifyCollectionChangedAction.Add when e.NewItems is not null:
+                    foreach (FileMatchViewModel item in e.NewItems)
+                        if (PassesFilter(item)) FilteredResults.Add(item);
+                    break;
+                case System.Collections.Specialized.NotifyCollectionChangedAction.Remove when e.OldItems is not null:
+                    foreach (FileMatchViewModel item in e.OldItems)
+                        FilteredResults.Remove(item);
+                    break;
+                case System.Collections.Specialized.NotifyCollectionChangedAction.Reset:
+                    FilteredResults.Clear();
+                    break;
+            }
+        }
+
+        RecomputeReplaceEnabled();
+        SearchInFoundFilesCommand.NotifyCanExecuteChanged();
+        ReplaceCommand.NotifyCanExecuteChanged();
+        ReplaceWithBackupsCommand.NotifyCanExecuteChanged();
+        OnPropertyChanged(nameof(FilterStatusText));
+    }
+
+    private bool PassesFilter(FileMatchViewModel f)
+    {
+        if (string.IsNullOrEmpty(FilterText)) return true;
+        if (f.Path.Contains(FilterText, StringComparison.OrdinalIgnoreCase)) return true;
+        foreach (var line in f.Lines)
+            if (line.LineText.Contains(FilterText, StringComparison.OrdinalIgnoreCase)) return true;
+        return false;
+    }
+
+    private void RebuildFilteredResults()
+    {
+        FilteredResults.Clear();
+        foreach (var r in Results)
+            if (PassesFilter(r)) FilteredResults.Add(r);
+        OnPropertyChanged(nameof(FilterStatusText));
+    }
+
+    /// <summary>Replaces <see cref="Results"/> in one logical batch (used by sort).
+    /// FilteredResults is rebuilt once at the end to avoid N intermediate updates.</summary>
+    public void ReplaceResults(IReadOnlyList<FileMatchViewModel> ordered)
+    {
+        _suppressFilteredMirror = true;
+        try
+        {
+            Results.Clear();
+            foreach (var r in ordered) Results.Add(r);
+        }
+        finally
+        {
+            _suppressFilteredMirror = false;
+        }
+        RebuildFilteredResults();
+    }
     public ObservableCollection<Preset> Presets { get; } = [];
 
     /// <summary>Raised when a search or replace operation starts so the host window can collapse the form row.</summary>
@@ -190,11 +285,12 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanSearchInFound))]
     private Task SearchInFoundFilesAsync()
     {
-        // Snapshot current paths before Results is cleared by the search.
-        var paths = Results.Select(r => r.Path).ToList();
+        // Snapshot the visible (filtered) paths before Results is cleared by the search,
+        // so an active filter narrows the follow-up search exactly the way the user expects.
+        var paths = FilteredResults.Select(r => r.Path).ToList();
         return RunSearchAsync(invert: false, restrictToPaths: paths);
     }
-    private bool CanSearchInFound() => !IsSearching && !IsReplacing && Results.Count > 0;
+    private bool CanSearchInFound() => !IsSearching && !IsReplacing && FilteredResults.Count > 0;
 
     private async Task RunSearchAsync(bool invert, IReadOnlyList<string>? restrictToPaths)
     {
@@ -384,7 +480,7 @@ public partial class MainViewModel : ObservableObject
 
     private async Task DoReplaceAsync(bool withBackups)
     {
-        if (Results.Count == 0)
+        if (FilteredResults.Count == 0)
         {
             SetSummary("Run a search first.");
             return;
@@ -408,7 +504,8 @@ public partial class MainViewModel : ObservableObject
 
             var totalReplacements = 0;
             var filesChanged = 0;
-            var paths = Results.Select(r => r.Path).ToList();
+            // Replace only the visible (filtered) set so an active filter narrows what gets rewritten.
+            var paths = FilteredResults.Select(r => r.Path).ToList();
             var newBackups = new List<(string, string, DateTime)>();
             await Task.Run(() =>
             {
@@ -456,7 +553,7 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
-    private bool CanReplace() => !IsSearching && !IsReplacing && Results.Count > 0;
+    private bool CanReplace() => !IsSearching && !IsReplacing && FilteredResults.Count > 0;
 
     [RelayCommand(CanExecute = nameof(CanUndoReplace))]
     private async Task UndoReplaceAsync()
