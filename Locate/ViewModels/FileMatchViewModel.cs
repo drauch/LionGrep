@@ -2,28 +2,36 @@ using System.Collections.ObjectModel;
 using System.Text;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Locate.Core;
+using Locate.Core.Logic;
 using Microsoft.UI.Xaml;
 
 namespace Locate.ViewModels;
 
-public sealed class FileNameSegment
+/// <summary>
+/// One slice of a rendered string in the results view, tagged with its highlight semantics.
+/// The XAML binds three Visibility props (one per kind) so each segment paints itself with the
+/// matching background — no IValueConverter required.
+/// </summary>
+public sealed class TextSegment
 {
-    public FileNameSegment(string text, bool isMatched)
+    public TextSegment(string text, HighlightKind kind)
     {
         Text = text;
-        IsMatched = isMatched;
+        Kind = kind;
     }
 
     public string Text { get; }
-    public bool IsMatched { get; }
+    public HighlightKind Kind { get; }
 
-    public Visibility MatchedVisibility => IsMatched ? Visibility.Visible : Visibility.Collapsed;
-    public Visibility UnmatchedVisibility => IsMatched ? Visibility.Collapsed : Visibility.Visible;
+    public Visibility EngineMatchVisibility => Kind == HighlightKind.EngineMatch ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility FilterMatchVisibility => Kind == HighlightKind.FilterMatch ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility PlainVisibility => Kind == HighlightKind.None ? Visibility.Visible : Visibility.Collapsed;
 }
 
 public partial class FileMatchViewModel : ObservableObject
 {
     private readonly FileMatch _model;
+    private readonly string? _displayDirectory;
 
     public FileMatchViewModel(MainViewModel parent, FileMatch model, int insertionIndex, string? displayDirectory = null)
     {
@@ -32,11 +40,8 @@ public partial class FileMatchViewModel : ObservableObject
         InsertionIndex = insertionIndex;
         _displayDirectory = displayDirectory;
         Lines = new ObservableCollection<LineMatchViewModel>(
-            model.ContentMatches.Select(m => new LineMatchViewModel(model.Path, m)));
-        FileNameSegments = ComputeFileNameSegments(model);
+            model.ContentMatches.Select(m => new LineMatchViewModel(parent, model.Path, m)));
     }
-
-    private readonly string? _displayDirectory;
 
     public MainViewModel Parent { get; }
     public int InsertionIndex { get; }
@@ -120,55 +125,53 @@ public partial class FileMatchViewModel : ObservableObject
     public bool IsExpandable => Lines.Count > 0;
     public Visibility ChevronVisibility => IsExpandable ? Visibility.Visible : Visibility.Collapsed;
 
-    public IReadOnlyList<FileNameSegment> FileNameSegments { get; }
+    /// <summary>Segments for the file-name cell. Engine matches come from <see cref="FileMatch.NameMatches"/>;
+    /// filter matches come from <see cref="MainViewModel.FilterText"/>. Recomputed on every read so a
+    /// filter change just needs to fire <c>PropertyChanged</c> for this property.</summary>
+    public IReadOnlyList<TextSegment> FileNameSegments => BuildSegments(FileName, GetFileNameEngineRanges());
 
-    private static IReadOnlyList<FileNameSegment> ComputeFileNameSegments(FileMatch model)
+    /// <summary>Segments for the directory column. Only filter-driven highlights — the engine never
+    /// matches the directory portion of a path.</summary>
+    public IReadOnlyList<TextSegment> DirectorySegments => BuildSegments(Directory, engineRanges: null);
+
+    /// <summary>Called by <see cref="MainViewModel"/> when the live filter text changes (after the
+    /// 250 ms debounce). Re-emits the segment properties so the UI rebinds.</summary>
+    public void RaiseFilterHighlightChanged()
     {
-        var fileName = System.IO.Path.GetFileName(model.Path);
-        if (model.NameMatches.Count == 0 || string.IsNullOrEmpty(model.RelativePath))
-            return [new FileNameSegment(fileName, false)];
+        OnPropertyChanged(nameof(FileNameSegments));
+        OnPropertyChanged(nameof(DirectorySegments));
+        foreach (var line in Lines)
+            line.RaiseFilterHighlightChanged();
+    }
 
-        var fileNameStart = model.RelativePath.Length - fileName.Length;
+    private IReadOnlyList<TextSegment> BuildSegments(string text, IReadOnlyList<HighlightRange>? engineRanges)
+    {
+        var segments = HighlightSegmenter.Build(text, engineRanges, Parent.FilterText);
+        return segments.Select(s => new TextSegment(s.Text, s.Kind)).ToArray();
+    }
 
-        // Translate, clamp, and merge match spans into the file-name segment of the relative path.
-        var matched = new List<(int Start, int End)>();
-        foreach (var span in model.NameMatches)
+    /// <summary>Translates the engine's <see cref="FileMatch.NameMatches"/> (which are ranges into
+    /// the relative path) into ranges against the bare file name. Returns empty if there's nothing
+    /// to highlight.</summary>
+    private IReadOnlyList<HighlightRange>? GetFileNameEngineRanges()
+    {
+        if (_model.NameMatches.Count == 0 || string.IsNullOrEmpty(_model.RelativePath))
+            return null;
+
+        var fileName = FileName;
+        var fileNameStart = _model.RelativePath.Length - fileName.Length;
+
+        var ranges = new List<HighlightRange>();
+        foreach (var span in _model.NameMatches)
         {
             var s = span.Column - fileNameStart;
             var e = s + span.Length;
             if (e <= 0 || s >= fileName.Length) continue;
             s = Math.Max(0, s);
             e = Math.Min(fileName.Length, e);
-            if (e > s) matched.Add((s, e));
+            if (e > s) ranges.Add(new HighlightRange(s, e - s));
         }
-        if (matched.Count == 0)
-            return [new FileNameSegment(fileName, false)];
-
-        // Merge overlapping/adjacent ranges.
-        matched.Sort((a, b) => a.Start.CompareTo(b.Start));
-        var merged = new List<(int Start, int End)> { matched[0] };
-        for (var i = 1; i < matched.Count; i++)
-        {
-            var prev = merged[^1];
-            var curr = matched[i];
-            if (curr.Start <= prev.End)
-                merged[^1] = (prev.Start, Math.Max(prev.End, curr.End));
-            else
-                merged.Add(curr);
-        }
-
-        var segments = new List<FileNameSegment>();
-        var cursor = 0;
-        foreach (var (s, e) in merged)
-        {
-            if (s > cursor) segments.Add(new FileNameSegment(fileName[cursor..s], false));
-            segments.Add(new FileNameSegment(fileName[s..e], true));
-            cursor = e;
-        }
-        if (cursor < fileName.Length)
-            segments.Add(new FileNameSegment(fileName[cursor..], false));
-
-        return segments;
+        return ranges.Count == 0 ? null : ranges;
     }
 
     private static string FormatSize(long bytes)
@@ -180,10 +183,13 @@ public partial class FileMatchViewModel : ObservableObject
     }
 }
 
-public sealed class LineMatchViewModel
+public sealed class LineMatchViewModel : ObservableObject
 {
-    public LineMatchViewModel(string filePath, LineMatch model)
+    private readonly MainViewModel _parent;
+
+    public LineMatchViewModel(MainViewModel parent, string filePath, LineMatch model)
     {
+        _parent = parent;
         FilePath = filePath;
         LineNumber = model.LineNumber;
         Column = model.Column;
@@ -198,11 +204,26 @@ public sealed class LineMatchViewModel
     public string LineText { get; }
 
     public string PositionText => $"{LineNumber,4}:{Column,-3}";
-    public string PrefixText => LineText[..Math.Min(Column, LineText.Length)];
-    public string MatchText => Length > 0 && Column < LineText.Length
-        ? LineText.Substring(Column, Math.Min(Length, LineText.Length - Column))
-        : "";
-    public string SuffixText => Column + Length < LineText.Length
-        ? LineText[(Column + Length)..]
-        : "";
+
+    /// <summary>Segments for the matched line. Engine highlight (yellow) is the single
+    /// <c>(Column, Length)</c> range from the search result; filter highlight (blue) overrides
+    /// that range wherever the live filter text overlaps it.</summary>
+    public IReadOnlyList<TextSegment> LineSegments
+    {
+        get
+        {
+            HighlightRange[]? engineRanges = null;
+            if (Length > 0 && Column < LineText.Length)
+            {
+                var len = Math.Min(Length, LineText.Length - Column);
+                if (len > 0)
+                    engineRanges = [new HighlightRange(Column, len)];
+            }
+
+            var segments = HighlightSegmenter.Build(LineText, engineRanges, _parent.FilterText);
+            return segments.Select(s => new TextSegment(s.Text, s.Kind)).ToArray();
+        }
+    }
+
+    public void RaiseFilterHighlightChanged() => OnPropertyChanged(nameof(LineSegments));
 }

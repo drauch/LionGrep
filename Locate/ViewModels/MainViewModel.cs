@@ -267,8 +267,18 @@ public partial class MainViewModel : ObservableObject
         {
             _filterDebounceTimer.Stop();
             RebuildFilteredResults();
+            NotifyFilterHighlightChanged();
         };
         _filterDebounceTimer.Start();
+    }
+
+    /// <summary>Re-emits the segment properties on every visible row + line so the blue filter
+    /// highlight refreshes after the live filter changes. Reuses the same 250 ms debounce as the
+    /// row-membership rebuild — one notification per settle, not per keystroke.</summary>
+    private void NotifyFilterHighlightChanged()
+    {
+        foreach (var f in Results)
+            f.RaiseFilterHighlightChanged();
     }
 
     private void OnResultsCollectionChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
