@@ -272,9 +272,11 @@ public sealed partial class MainWindow : Window
         var folder = await picker.PickSingleFolderAsync();
         if (folder is null) return;
 
-        ViewModel.SearchIn = string.IsNullOrWhiteSpace(ViewModel.SearchIn)
-            ? folder.Path
-            : ViewModel.SearchIn.TrimEnd('\r', '\n') + Environment.NewLine + folder.Path;
+        // Browse picks ONE folder, so it should produce a single-folder Search-in. Replace whatever
+        // multi-line content was there and collapse the box back to single-line view — the picker
+        // is the "I want exactly this folder" gesture, not the "add another" gesture.
+        ViewModel.SearchIn = folder.Path;
+        ViewModel.IsSearchInExpanded = false;
     }
 
     private void OnSearchInRecentsClicked(object sender, RoutedEventArgs e) =>
