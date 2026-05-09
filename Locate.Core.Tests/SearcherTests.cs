@@ -333,6 +333,54 @@ public class SearcherTests
     }
 
     [Test]
+    public void MmapPath_LargeFile_FindsMatchInsideTheMmappedRange()
+    {
+        // R13 — every existing test creates files of a few hundred bytes, which fall under the
+        // 64 KB MmapMinBytes threshold and go through File.ReadAllBytes. Force the mmap path with
+        // a > 64 KB file so the unsafe pointer / SafeMemoryMappedViewHandle code is exercised.
+        const int FillerLines = 4_000;
+        var sb = new System.Text.StringBuilder(capacity: FillerLines * 32);
+        for (var i = 0; i < FillerLines; i++)
+            sb.AppendLine($"filler line {i:D5} with no token here");
+        // Splice the needle on a known line so we can assert its position.
+        sb.AppendLine("the magic NEEDLE_TOKEN appears exactly once on this line");
+
+        Touch("big.txt", sb.ToString());
+        var fileLength = new FileInfo(Path.Combine(_root, "big.txt")).Length;
+        Assert.That(fileLength, Is.GreaterThan(64 * 1024),
+            "Test setup must produce a file larger than the mmap threshold to exercise the right path.");
+
+        var results = _searcher.Search(new SearchRequest(
+            Roots: [_root],
+            Enumeration: new FileEnumerationOptions(),
+            Search: new SearchOptions { Pattern = "NEEDLE_TOKEN", CaseSensitive = true })).ToList();
+
+        Assert.That(results, Has.Count.EqualTo(1));
+        Assert.That(results[0].ContentMatches, Has.Count.EqualTo(1));
+        Assert.That(results[0].ContentMatches[0].LineNumber, Is.EqualTo(FillerLines + 1));
+    }
+
+    [Test]
+    public void MmapPath_LargeFileWithDenseMatches_AllReportedCorrectly()
+    {
+        // R13 part 2 — exercise the cached-line-text fast path and high match counts in the mmap branch.
+        const int Repetitions = 500;
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine(new string('x', 60_000));   // pad past the 64 KB threshold first
+        for (var i = 0; i < Repetitions; i++)
+            sb.AppendLine("hit hit hit");          // 3 hits per line, 500 lines
+        Touch("dense.txt", sb.ToString());
+
+        var results = _searcher.Search(new SearchRequest(
+            Roots: [_root],
+            Enumeration: new FileEnumerationOptions(),
+            Search: new SearchOptions { Pattern = "hit", CaseSensitive = true })).ToList();
+
+        Assert.That(results, Has.Count.EqualTo(1));
+        Assert.That(results[0].ContentMatches, Has.Count.EqualTo(Repetitions * 3));
+    }
+
+    [Test]
     public void Producer_NonOceException_PropagatesToCaller_NotSilentlySwallowed()
     {
         // R8 — workers throwing anything other than OperationCanceledException used to fault the
