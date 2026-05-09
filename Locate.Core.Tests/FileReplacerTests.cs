@@ -193,14 +193,48 @@ public class FileReplacerTests
     }
 
     [Test]
-    public void TooLargeFile_Throws()
+    public void LargeFile_AboveInMemoryThreshold_RoutesThroughStreamingPath_AndReplacesCorrectly()
     {
+        // Build a > 4 MiB file by repeating "alpha needle omega\n" until we cross the threshold.
         var path = Path.Combine(_tempDir, "big.txt");
-        using (var fs = new FileStream(path, FileMode.CreateNew))
-            fs.SetLength(FileReplacer.InMemoryThresholdBytes + 1);
+        using (var sw = new StreamWriter(path, append: false, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false)))
+        {
+            long written = 0;
+            var line = "alpha needle omega\n";
+            var lineBytes = Encoding.UTF8.GetByteCount(line);
+            while (written <= FileReplacer.InMemoryThresholdBytes + 1024)
+            {
+                sw.Write(line);
+                written += lineBytes;
+            }
+        }
+        var fileSize = new FileInfo(path).Length;
+        Assume.That(fileSize, Is.GreaterThan(FileReplacer.InMemoryThresholdBytes),
+            "fixture must exceed the in-memory threshold to exercise the streaming path");
 
-        Assert.That(() => _replacer.Replace(path, Ctx("x", "y")),
-            Throws.TypeOf<NotSupportedException>());
+        var result = _replacer.Replace(path, Ctx("needle", "X"));
+
+        Assert.That(result.ReplacementCount, Is.GreaterThan(0));
+        // Spot-check: every "needle" became "X" and total file shrank by 5 bytes per replacement.
+        var rewritten = File.ReadAllText(path);
+        Assert.That(rewritten, Does.Not.Contain("needle"));
+        Assert.That(rewritten.Split('\n', StringSplitOptions.RemoveEmptyEntries).Length, Is.EqualTo(result.ReplacementCount));
+    }
+
+    [Test]
+    public void DotMatchesNewline_AboveItsCap_StillThrows()
+    {
+        // Multiline regex replace can't be streamed; cap is much higher (256 MiB) but still finite.
+        // Build a sparse file > the cap by SetLength.
+        var path = Path.Combine(_tempDir, "huge.txt");
+        using (var fs = new FileStream(path, FileMode.CreateNew))
+            fs.SetLength(FileReplacer.MultilineMemoryCapBytes + 1);
+
+        var ctx = new ReplacementContext(
+            new SearchOptions { Pattern = "a", UseRegex = true, DotMatchesNewline = true, CaseSensitive = true },
+            "b");
+
+        Assert.That(() => _replacer.Replace(path, ctx), Throws.TypeOf<NotSupportedException>());
     }
 
     [Test]

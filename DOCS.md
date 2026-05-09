@@ -93,7 +93,7 @@ Click the chevron on the **Search** split button:
 
 ## 4. Replace
 
-Replace rewrites every matched file on disk. Atomic via temp-file + `File.Replace`, so a failure can't corrupt the original. The current limit is **4 MiB per file** (replace-side); larger files throw `NotSupportedException` and are skipped. (Streamed replace for larger files is a v1.1 item.)
+Replace rewrites every matched file on disk. Atomic via temp-file + `File.Replace`, so a failure can't corrupt the original. Files of any size are supported for the line-by-line case (the engine streams them through a sibling temp file and renames at the end). The only remaining cap is on **regex replace with `Dot matches newline`**: that mode requires the entire file in one `string`, so it's capped at **256 MiB**; larger files throw `NotSupportedException` and are skipped.
 
 ### 4.1 Confirmation dialog (3-way)
 
@@ -154,7 +154,7 @@ The window title separately shows the first non-empty line of **Search in** so y
 - Files inside directories pruned by **Exclude paths** when matching as a directory pattern. The whole subtree is never traversed, and we don't pay to enumerate it just to count it. This is intentional, for performance.
 - Files inside subfolders when **Include subfolders** is off — same reason.
 - Files filtered by attribute: hidden (when **Include hidden items** is off), system (when **Include system files** is off), symlinks/reparse points (when **Follow symbolic links** is off). These never reach the file-level predicate and aren't counted.
-- Files that errored (in use, > 2 GiB, access denied) — silently skipped.
+- Files that errored (in use, access denied, or one of the residual streaming caps in §6.3) — silently skipped.
 
 **Rule of thumb:** "Skipped" answers the question *"how many files did we look at and decide to filter out?"* It does not include files we never saw because a higher-level predicate told us not to recurse.
 
@@ -178,10 +178,18 @@ If **Search for** is empty *and* **Search in file & sub directory names** is on,
 
 ### 6.3 File size limits
 
-- **Search**: files up to 2 GiB. Larger files are silently skipped (counted in Skipped).
-- **Replace**: files up to 4 MiB. Larger files throw `NotSupportedException` and are silently skipped.
+Locate handles files of arbitrary size in both Search and Replace via a streaming path that kicks in above an in-memory threshold. There are still a few specific caps tied to features that fundamentally need the whole file in one `string`:
 
-Streamed search and replace for arbitrary file sizes is a v1.1 item.
+- **Search, line-by-line** — no cap. Files ≤ 2 GiB use a single mmap span; files > 2 GiB are walked in 64 MiB chunks aligned to newline boundaries.
+- **Search, `Dot matches newline` (regex)** — capped at **2 GiB**. Singleline regex requires the whole file as one `string`, which can't exceed `int.MaxValue`. Larger files throw and are silently skipped.
+- **Search, non-UTF-8 (UTF-16, UTF-32) above 2 GiB** — not supported. Code-unit-aware chunking would be needed and the case is vanishingly rare. Larger files throw and are silently skipped.
+- **Replace, line-by-line** — no cap. Files above ~4 MiB stream through a temp file; CRLF/LF/mixed terminators are preserved verbatim, including across the streaming buffer boundary.
+- **Replace, `Dot matches newline` (regex)** — capped at **256 MiB** (whole-file regex semantics). Larger files throw and are silently skipped.
+
+Other practical limits:
+
+- **Pathological single line in Search > 64 MiB** — chunk-aligned search needs at least one newline per 64 MiB chunk. A single line longer than that throws `NotSupportedException`; the case (multi-GB minified blobs) is not common in real corpora.
+- **Pathological single line in Replace > 32 MiB** — the streaming buffer grows up to 32 MiB to accommodate long lines; beyond that we throw rather than allocate unbounded memory.
 
 ### 6.4 What counts as "binary"
 

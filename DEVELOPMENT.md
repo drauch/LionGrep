@@ -172,9 +172,31 @@ This is the part the engine cares about most. If you're touching `Locate.Core/Se
 ### Semantic invariants (these are load-bearing)
 
 - **Ordinal everywhere.** `StringComparison.Ordinal` / `OrdinalIgnoreCase` only. **Never** `CurrentCulture` or `InvariantCulture`. Regex options always include `RegexOptions.CultureInvariant`. This is intentional — matches ripgrep, avoids Turkish-i and German-ß surprises, and is dramatically faster.
-- **Encoding round-trip.** Detect via BOM (UTF-8/16 LE/16 BE/32 LE/32 BE); no BOM ⇒ UTF-8. Replace writes back with the *same* encoding it detected, BOM included if present.
-- **Line endings.** Preserved per-line — CRLF stays CRLF, LF stays LF, even mixed within a file.
-- **Search size cap = 2 GiB.** Replace size cap = 4 MiB. Streamed paths for both are open (see §8).
+- **Encoding round-trip.** Detect via BOM (UTF-8/16 LE/16 BE/32 LE/32 BE); no BOM ⇒ UTF-8. Replace writes back with the *same* encoding it detected, BOM included if present. The streaming replace path preserves this round-trip too — first 4 bytes are sniffed before the StreamReader starts decoding bulk content, so the BOM is observed and re-emitted by the matching StreamWriter.
+- **Line endings.** Preserved per-line — CRLF stays CRLF, LF stays LF, even mixed within a file. In the streaming replace path, CRLF that straddles the 64 KiB read boundary still round-trips intact via a partial-line carry.
+
+### Streaming search and replace
+
+Locate handles files of any practical size, transitioning to a streaming path above per-feature thresholds. Both paths share the same matchers / line replacers — the streaming code only differs in how it feeds bytes/chars to them.
+
+- **Search ≤ 2 GiB** — single-span mmap (or buffered read for files < 64 KiB). One `ReadOnlySpan<byte>` over the whole file.
+- **Search > 2 GiB** — `SearchChunked` in `FileSearcher.cs`. Opens one `MemoryMappedFile`, iterates 64 MiB views, slides each chunk's end back to the last `\n` so no line is split. Tracks `lineNumber` across chunks. **UTF-8 only**; non-UTF-8 files > 2 GiB and `DotMatchesNewline` regex > 2 GiB throw `NotSupportedException` (Searcher catches and silently skips). Pathological single-line files > 64 MiB also throw.
+- **Replace ≤ 4 MiB** — in-memory, identical to v1.0 (faster small-file path).
+- **Replace > 4 MiB (line-by-line)** — `ReplaceStreamingLineByLine` in `FileReplacer.cs`. `StreamReader`/`StreamWriter` with a 64 KiB char buffer; finds `\n` in the buffer, runs `ILineReplacer.ReplaceLine` per line, preserves `\r`/`\n` terminators verbatim. Atomic `File.Replace` at the end; the temp is discarded if zero replacements were made (original file untouched, mtime unchanged).
+- **Replace `DotMatchesNewline` regex** — always in-memory (whole-file regex), capped at 256 MiB (raised from 4 MiB in v1.0).
+
+#### `MemoryMappedViewAccessor.PointerOffset` gotcha
+
+When `CreateViewAccessor(offset, size)` is called with an `offset` that isn't a multiple of the OS allocation granularity (64 KiB on Windows), the returned view's `AcquirePointer` does **not** point at the requested file offset — it points at the start of the mapped page (rounded down). The bytes between that page start and the requested offset are exposed via `view.PointerOffset`. The single-span path always uses offset 0 so this is a no-op there, but the chunked path's per-view offsets are arbitrary, so every `AcquirePointer` call in `SearchChunked` adds `view.PointerOffset` to the pointer before constructing a `ReadOnlySpan<byte>`. Forgetting this produced a class of subtle bugs where chunks 1..N read the wrong file region.
+
+### Known gaps / v1.1 candidates
+
+- **Search `DotMatchesNewline` (regex) > 2 GiB** — fundamentally hard; would need a different regex strategy than "decode whole file to string."
+- **Search non-UTF-8 (UTF-16/32) > 2 GiB** — needs code-unit-aware chunk alignment. Vanishingly rare.
+- **Replace `DotMatchesNewline` (regex) > 256 MiB** — same root cause.
+- **Pathological single lines > 64 MiB (search) / 32 MiB (replace)** — unbounded line length isn't worth supporting.
+- **Global system-wide hotkeys** for presets (in-app only today).
+- **Live re-fit of the form/results splitter** when `WrapPanel` content reflows on width change (form-fit only runs on first activation).
 
 ---
 
@@ -197,16 +219,7 @@ See `Locate.Bench/README.md` for the available profiles, the patterns each bench
 
 ---
 
-## 8. Known gaps / v1.1 candidates
-
-- **Search > 2 GiB** — needs a streamed, chunked-with-overlap path (overlap = pattern length − 1 to avoid splitting a match across chunks).
-- **Replace > 4 MiB** — needs streamed temp-file rewrite (current impl is in-memory).
-- **Global system-wide hotkeys** for presets (in-app only today).
-- **Live re-fit of the form/results splitter** when `WrapPanel` content reflows on width change (form-fit only runs on first activation).
-
----
-
-## 9. Gotchas worth knowing
+## 8. Gotchas worth knowing
 
 - **WinUI 3 has no `Grid.SharedSizeGroup`.** Don't use it — the XAML compiler exits 1 silently. Use identical hardcoded widths instead.
 - **Many WinUI 3 controls are sealed** (`Thumb`, etc.) so subclassing is out; wrap in a UserControl (see `Controls/CursorThumb.cs`).
@@ -217,7 +230,7 @@ See `Locate.Bench/README.md` for the available profiles, the patterns each bench
 
 ---
 
-## 10. Where to look first when…
+## 9. Where to look first when…
 
 | You're trying to… | Start here |
 |---|---|

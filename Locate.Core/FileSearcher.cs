@@ -15,6 +15,32 @@ public sealed class FileSearcher
     /// </summary>
     private const int MmapMinBytes = 64 * 1024;
 
+    /// <summary>
+    /// Default chunk size for the streaming path used when a file exceeds 2 GiB. Each chunk is processed
+    /// end-to-end through the same per-line search routines, with chunk boundaries forced onto newline
+    /// positions so no line is ever split. 64 MiB is the sweet spot: small enough that the OS readahead
+    /// pipeline stays full and a single view's address space is trivial, large enough that view-creation
+    /// overhead amortises to nothing.
+    /// </summary>
+    private const int DefaultChunkBytes = 64 * 1024 * 1024;
+
+    /// <summary>Files at or below this size use the single-span path (mmap or buffered read).
+    /// Above it, the chunked path runs. Default is <see cref="int.MaxValue"/> because a single
+    /// <c>ReadOnlySpan&lt;byte&gt;</c> can't address more than that.</summary>
+    private const long DefaultLargeFileThreshold = int.MaxValue;
+
+    /// <summary>Test seam: when &gt; 0, overrides <see cref="DefaultChunkBytes"/>. Tests use this to
+    /// exercise the chunked code path on small (KB-sized) files instead of having to write multi-GiB
+    /// fixtures.</summary>
+    internal int ChunkBytesOverride;
+
+    /// <summary>Test seam: when &gt; 0, overrides <see cref="DefaultLargeFileThreshold"/>. Pair with
+    /// <see cref="ChunkBytesOverride"/> to force any small file through the chunked path.</summary>
+    internal long LargeFileThresholdOverride;
+
+    private int ChunkBytes => ChunkBytesOverride > 0 ? ChunkBytesOverride : DefaultChunkBytes;
+    private long LargeFileThreshold => LargeFileThresholdOverride > 0 ? LargeFileThresholdOverride : DefaultLargeFileThreshold;
+
     public FileMatch? Search(string path, IMatcher matcher, CancellationToken ct = default, bool skipBinary = false)
         => Search(path, matcher, skipBinary, multilineMode: false, out _, ct);
 
@@ -32,9 +58,27 @@ public sealed class FileSearcher
         var info = new FileInfo(path);
         if (!info.Exists || info.Length == 0)
             return null;
-        if (info.Length > int.MaxValue)
-            throw new NotSupportedException($"Files larger than 2 GiB are not yet supported (path: {path}).");
 
+        if (info.Length <= LargeFileThreshold)
+            return SearchSingleSpan(path, info, matcher, skipBinary, multilineMode, ref wasBinarySkipped, ct);
+
+        // Chunked path: only reached for files larger than the single-span threshold (2 GiB by default).
+        // DotMatchesNewline (singleline) regex semantics require the whole file in one .NET string, which
+        // can't be done above 2 GiB without crossing the int-indexed string boundary.
+        if (multilineMode)
+            throw new NotSupportedException(
+                $"DotMatchesNewline mode is not supported for files larger than 2 GiB (path: {path}). " +
+                "Singleline regex requires the entire file to be matched in one pass, which would " +
+                "require a single .NET string spanning the whole file.");
+
+        return SearchChunked(path, info.Length, matcher, skipBinary, ref wasBinarySkipped, ct);
+    }
+
+    /// <summary>≤ 2 GiB path: read once into a single span (mmap or buffered). Identical behaviour to v1.0.</summary>
+    private FileMatch? SearchSingleSpan(
+        string path, FileInfo info, IMatcher matcher,
+        bool skipBinary, bool multilineMode, ref bool wasBinarySkipped, CancellationToken ct)
+    {
         // Small-file path: a buffered read is faster than mmap'ing per file because mmap setup cost
         // (Section object + view mapping + Acquire/Release ceremony) dominates at this size.
         if (info.Length < MmapMinBytes)
@@ -90,37 +134,185 @@ public sealed class FileSearcher
             return SearchWholeText(path, text, detected.Encoding, matcher, ct);
         }
 
-        // Byte-level fast path for literal patterns over UTF-8 content. UTF-8 is self-synchronizing,
-        // so a multi-byte character's bytes only appear at that character's position — case-sensitive
-        // byte-level IndexOf is correct for ANY pattern, not just ASCII. The case-insensitive variant
-        // still requires ASCII (we'd need full Unicode case folding for non-ASCII), so we restrict
-        // case-insensitive byte search to ASCII patterns.
-        if (detected.Encoding is UTF8Encoding && matcher is LiteralMatcher lit && lit.Utf8PatternBytes.Length > 0)
+        List<LineMatch>? hits = null;
+        SearchSlice(content, detected.Encoding, matcher, ref hits, startLineNumber: 1, ct);
+        return hits is null ? null : new FileMatch(path, detected.Encoding, hits, []);
+    }
+
+    /// <summary>
+    /// Streaming path for files larger than the single-span threshold. UTF-8 only (with or without BOM);
+    /// other encodings are vanishingly rare at this size and would need code-unit-aware chunk alignment.
+    /// Each chunk is forced to end at the last newline within a 64 MiB window so no line ever straddles
+    /// a chunk boundary, then handed to the same per-slice search routine the small-file path uses —
+    /// just with a running line counter carried across chunks.
+    /// </summary>
+    private FileMatch? SearchChunked(
+        string path, long fileLength, IMatcher matcher,
+        bool skipBinary, ref bool wasBinarySkipped, CancellationToken ct)
+    {
+        using var mmap = MemoryMappedFile.CreateFromFile(
+            path, FileMode.Open, mapName: null, capacity: fileLength, MemoryMappedFileAccess.Read);
+
+        // BOM / encoding detection: read just the first up-to-4 bytes via a tiny throwaway view.
+        // Note: AcquirePointer returns a pointer to the start of the *mapped page*, not to the
+        // requested offset within the file. Windows rounds view offsets down to allocation
+        // granularity (typically 64 KiB) and exposes the rounded-off bytes via PointerOffset, so
+        // we add that to land on the actual data. (Offset 0 is always page-aligned, so this is a
+        // no-op here, but keeping the pattern uniform across all three views below.)
+        DetectedEncoding detected;
+        var headLength = (int)Math.Min(4L, fileLength);
+        unsafe
         {
-            if (lit.CaseSensitive)
-                return SearchUtf8LiteralBytes(path, content, detected.Encoding, lit.Utf8PatternBytes, lit.PatternCharCount, ignoreCase: false, lit.WholeWord, ct);
-            if (lit.IsAsciiPattern)
-                return SearchUtf8LiteralBytes(path, content, detected.Encoding, lit.AsciiLowerPatternBytes!, lit.PatternCharCount, ignoreCase: true, lit.WholeWord, ct);
-            // else fall through: case-insensitive non-ASCII literal — needs Unicode-aware folding.
+            using var headView = mmap.CreateViewAccessor(0, headLength, MemoryMappedFileAccess.Read);
+            byte* hp = null;
+            try
+            {
+                headView.SafeMemoryMappedViewHandle.AcquirePointer(ref hp);
+                detected = EncodingDetection.Detect(new ReadOnlySpan<byte>(hp + headView.PointerOffset, headLength));
+            }
+            finally
+            {
+                if (hp is not null) headView.SafeMemoryMappedViewHandle.ReleasePointer();
+            }
         }
 
+        if (detected.Encoding is not UTF8Encoding)
+            throw new NotSupportedException(
+                $"Files larger than 2 GiB are only supported in UTF-8 (with or without BOM); detected " +
+                $"{detected.Encoding.WebName} (path: {path}).");
+
+        long offset = detected.BomLength;
+        var totalLength = fileLength;
+
+        // Binary check probes the first 8 KiB after the BOM, same window as the single-span path.
+        if (skipBinary)
+        {
+            var probeSize = (int)Math.Min(BinaryProbeBytes, totalLength - offset);
+            if (probeSize > 0)
+            {
+                using var probeView = mmap.CreateViewAccessor(offset, probeSize, MemoryMappedFileAccess.Read);
+                unsafe
+                {
+                    byte* pp = null;
+                    try
+                    {
+                        probeView.SafeMemoryMappedViewHandle.AcquirePointer(ref pp);
+                        var probe = new ReadOnlySpan<byte>(pp + probeView.PointerOffset, probeSize);
+                        if (probe.IndexOf((byte)0) >= 0)
+                        {
+                            wasBinarySkipped = true;
+                            return null;
+                        }
+                    }
+                    finally
+                    {
+                        if (pp is not null) probeView.SafeMemoryMappedViewHandle.ReleasePointer();
+                    }
+                }
+            }
+        }
+
+        var chunkBytes = ChunkBytes;
+        List<LineMatch>? hits = null;
+        var lineNumber = 1;
+
+        while (offset < totalLength)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            var remaining = totalLength - offset;
+            var chunkSize = (int)Math.Min(remaining, chunkBytes);
+            var isFinalChunk = remaining <= chunkBytes;
+
+            using var view = mmap.CreateViewAccessor(offset, chunkSize, MemoryMappedFileAccess.Read);
+            unsafe
+            {
+                byte* ptr = null;
+                try
+                {
+                    view.SafeMemoryMappedViewHandle.AcquirePointer(ref ptr);
+                    // ptr is to the start of the mapped page (offset rounded down to allocation
+                    // granularity); PointerOffset is the bytes to skip to land on our requested offset.
+                    var span = new ReadOnlySpan<byte>(ptr + view.PointerOffset, chunkSize);
+
+                    int processBytes;
+                    if (isFinalChunk)
+                    {
+                        processBytes = chunkSize;
+                    }
+                    else
+                    {
+                        // Slide the chunk end back to the last newline so the slice is whole lines only.
+                        // This guarantees each match's line is fully decodable from within the slice —
+                        // no need to carry overlap bytes across boundaries.
+                        var lastNl = span.LastIndexOf((byte)'\n');
+                        if (lastNl < 0)
+                            throw new NotSupportedException(
+                                $"Found a single line longer than {chunkBytes / 1024 / 1024} MiB at offset {offset} " +
+                                $"(path: {path}). The streaming search path requires at least one newline per chunk.");
+                        processBytes = lastNl + 1;
+                    }
+
+                    var slice = span[..processBytes];
+                    lineNumber = SearchSlice(slice, detected.Encoding, matcher, ref hits, lineNumber, ct);
+                    offset += processBytes;
+                }
+                finally
+                {
+                    if (ptr is not null) view.SafeMemoryMappedViewHandle.ReleasePointer();
+                }
+            }
+        }
+
+        return hits is null ? null : new FileMatch(path, detected.Encoding, hits, []);
+    }
+
+    /// <summary>
+    /// Searches a single slice of bytes (a sequence of complete lines plus an optional trailing
+    /// non-terminated line for the final chunk). Picks the byte-level fast path, regex pre-filter,
+    /// or per-line decode based on the matcher and encoding. Mutates <paramref name="hits"/> in
+    /// place and returns the line number at the end of the slice so the caller can resume.
+    /// </summary>
+    private static int SearchSlice(
+        ReadOnlySpan<byte> content, Encoding encoding, IMatcher matcher,
+        ref List<LineMatch>? hits, int startLineNumber, CancellationToken ct)
+    {
         // Regex pre-filter. If we extracted a required literal substring from the pattern, do a single
-        // SIMD-vectorized byte scan first; if the literal isn't in the file, the regex can't match and
-        // we skip the regex engine entirely. Pure win — only files that pass the pre-filter pay for
-        // line decoding + regex execution.
-        if (detected.Encoding is UTF8Encoding && matcher is RegexMatcher rm && rm.RequiredLiteralUtf8 is not null)
+        // SIMD-vectorized byte scan first; if the literal isn't in this slice, the regex can't match
+        // anywhere in it and we skip the regex engine entirely. We still walk the slice's newlines once
+        // to advance the running line counter for downstream chunks.
+        if (encoding is UTF8Encoding && matcher is RegexMatcher rm && rm.RequiredLiteralUtf8 is not null)
         {
             var found = rm.CaseSensitive
                 ? content.IndexOf(rm.RequiredLiteralUtf8) >= 0
                 : (rm.RequiredLiteralIsAscii
                     ? IndexOfAsciiCaseInsensitive(content, rm.RequiredLiteralAsciiLower!) >= 0
                     : true /* can't safely pre-filter case-insensitive non-ASCII; fall through */);
-            if (!found) return null;
+            if (!found)
+                return CountNewlines(content, startLineNumber);
         }
 
-        return detected.Encoding is UTF8Encoding
-            ? SearchUtf8(path, content, detected.Encoding, matcher, ct)
-            : SearchDecoded(path, content, detected.Encoding, matcher, ct);
+        // Byte-level fast path for literal patterns over UTF-8 content. UTF-8 is self-synchronizing,
+        // so a multi-byte character's bytes only appear at that character's position — case-sensitive
+        // byte-level IndexOf is correct for ANY pattern, not just ASCII. The case-insensitive variant
+        // still requires ASCII (we'd need full Unicode case folding for non-ASCII), so we restrict
+        // case-insensitive byte search to ASCII patterns.
+        if (encoding is UTF8Encoding && matcher is LiteralMatcher lit && lit.Utf8PatternBytes.Length > 0)
+        {
+            if (lit.CaseSensitive)
+                return SearchUtf8LiteralBytes(
+                    content, encoding, lit.Utf8PatternBytes, lit.PatternCharCount,
+                    ignoreCase: false, lit.WholeWord, ref hits, startLineNumber, ct);
+            if (lit.IsAsciiPattern)
+                return SearchUtf8LiteralBytes(
+                    content, encoding, lit.AsciiLowerPatternBytes!, lit.PatternCharCount,
+                    ignoreCase: true, lit.WholeWord, ref hits, startLineNumber, ct);
+            // case-insensitive non-ASCII literal — needs Unicode-aware folding, fall through to per-line.
+        }
+
+        return encoding is UTF8Encoding
+            ? SearchUtf8(content, encoding, matcher, ref hits, startLineNumber, ct)
+            : SearchDecoded(content, encoding, matcher, ref hits, startLineNumber, ct);
     }
 
     private static bool IsLikelyBinary(ReadOnlySpan<byte> content, Encoding encoding)
@@ -131,14 +323,31 @@ public sealed class FileSearcher
         return probe.IndexOf((byte)0) >= 0;
     }
 
-    private static FileMatch? SearchUtf8(string path, ReadOnlySpan<byte> content, Encoding encoding, IMatcher matcher, CancellationToken ct)
+    /// <summary>Counts newlines in a slice and returns <paramref name="startLineNumber"/> + count.
+    /// Used to keep the line counter accurate across chunks where the regex pre-filter short-circuits.</summary>
+    private static int CountNewlines(ReadOnlySpan<byte> content, int startLineNumber)
     {
-        List<LineMatch>? hits = null;
+        var lineNumber = startLineNumber;
+        var pos = 0;
+        while (pos < content.Length)
+        {
+            var nl = content[pos..].IndexOf((byte)'\n');
+            if (nl < 0) break;
+            pos += nl + 1;
+            lineNumber++;
+        }
+        return lineNumber;
+    }
+
+    private static int SearchUtf8(
+        ReadOnlySpan<byte> content, Encoding encoding, IMatcher matcher,
+        ref List<LineMatch>? hits, int startLineNumber, CancellationToken ct)
+    {
         var spans = new List<MatchSpan>(capacity: 8);
         var buffer = ArrayPool<char>.Shared.Rent(4096);
+        var lineNumber = startLineNumber;
         try
         {
-            var lineNumber = 1;
             var pos = 0;
             while (pos <= content.Length)
             {
@@ -176,13 +385,12 @@ public sealed class FileSearcher
                 pos = lineEnd + 1;
                 lineNumber++;
             }
+            return lineNumber;
         }
         finally
         {
             ArrayPool<char>.Shared.Return(buffer);
         }
-
-        return hits is null ? null : new FileMatch(path, encoding, hits, []);
     }
 
     /// <summary>
@@ -192,23 +400,22 @@ public sealed class FileSearcher
     /// whole-word boundaries — word chars are themselves ASCII, so any byte ≥ 128 (i.e. part of a
     /// non-ASCII char) always counts as a non-word boundary.
     /// </summary>
-    private static FileMatch? SearchUtf8LiteralBytes(
-        string path,
+    private static int SearchUtf8LiteralBytes(
         ReadOnlySpan<byte> content,
         Encoding encoding,
         byte[] patternBytes,
         int patternCharCount,
         bool ignoreCase,
         bool wholeWord,
+        ref List<LineMatch>? hits,
+        int startLineNumber,
         CancellationToken ct)
     {
-        if (patternBytes.Length == 0) return null;
-
-        List<LineMatch>? hits = null;
+        if (patternBytes.Length == 0) return startLineNumber;
 
         // Maintain (lineNumber, lineStart) incrementally so each match doesn't re-walk from byte 0.
         var lineStart = 0;
-        var lineNumber = 1;
+        var lineNumber = startLineNumber;
 
         // Cache the most recently decoded line so dense matches on a single line don't re-allocate
         // and re-decode the same string per hit.
@@ -284,7 +491,15 @@ public sealed class FileSearcher
             pos = hitEnd;
         }
 
-        return hits is null ? null : new FileMatch(path, encoding, hits, []);
+        // Catch the line counter up to the end of the slice so chunked callers resume correctly.
+        while (lineStart < content.Length)
+        {
+            var nl = content[lineStart..].IndexOf((byte)'\n');
+            if (nl < 0) break;
+            lineStart += nl + 1;
+            lineNumber++;
+        }
+        return lineNumber;
     }
 
     private static int IndexOfAsciiCaseInsensitive(ReadOnlySpan<byte> haystack, ReadOnlySpan<byte> needleLower)
@@ -373,12 +588,13 @@ public sealed class FileSearcher
         return new FileMatch(path, encoding, hits, []);
     }
 
-    private static FileMatch? SearchDecoded(string path, ReadOnlySpan<byte> content, Encoding encoding, IMatcher matcher, CancellationToken ct)
+    private static int SearchDecoded(
+        ReadOnlySpan<byte> content, Encoding encoding, IMatcher matcher,
+        ref List<LineMatch>? hits, int startLineNumber, CancellationToken ct)
     {
         var text = encoding.GetString(content);
-        List<LineMatch>? hits = null;
         var spans = new List<MatchSpan>(capacity: 8);
-        var lineNumber = 1;
+        var lineNumber = startLineNumber;
         var pos = 0;
 
         while (pos <= text.Length)
@@ -408,6 +624,6 @@ public sealed class FileSearcher
             lineNumber++;
         }
 
-        return hits is null ? null : new FileMatch(path, encoding, hits, []);
+        return lineNumber;
     }
 }

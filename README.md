@@ -11,6 +11,7 @@ Locate is a UI-driven search & replace tool built on .NET 10 + WinUI 3, targetin
 ## Highlights
 
 - **Fast.** Memory-mapped I/O, SIMD-vectorized byte search over UTF-8, per-file parallelism, and ripgrep-style required-literal extraction for regex queries. On real corpora, comparable to `rg` — and much faster than grepWin.
+- **Any file size.** Files above 2 GiB stream through a chunked search path (newline-aligned 64 MiB windows); files above 4 MiB stream through replace via a sibling temp + atomic rename. No silent skipping for big files.
 - **Three-section form: Where / What / Filter.** Each section snapshots into a **preset** (with hotkey support); presets compose so you can mix a saved root with a saved filter.
 - **Live filter on results.** Narrow the result set without re-running the search; every export, copy, and replace respects the current filter.
 - **Atomic, encoding-safe replace.** BOM-detected encoding round-trips through the rewrite; CRLF/LF line endings are preserved per-line; replace runs in parallel across cores; Cancel and Undo are first-class.
