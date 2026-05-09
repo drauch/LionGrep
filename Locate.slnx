@@ -7,6 +7,7 @@
   <Project Path="Locate.Bench/Locate.Bench.csproj" />
   <Project Path="Locate.Core.Tests/Locate.Core.Tests.csproj" />
   <Project Path="Locate.Core/Locate.Core.csproj" />
+  <Project Path="Locate.UI.Tests/Locate.UI.Tests.csproj" />
   <Project Path="Locate/Locate.csproj">
     <Platform Solution="*|ARM64" Project="ARM64" />
     <Platform Solution="*|x64" Project="x64" />
