@@ -1,7 +1,9 @@
+using System.Runtime.InteropServices;
 using Locate.Services;
 using Locate.ViewModels;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 using Windows.Graphics;
 using Windows.Storage.Pickers;
 using WinRT.Interop;
@@ -12,12 +14,32 @@ public sealed partial class SettingsWindow : Window
 {
     public SettingsViewModel ViewModel { get; }
 
-    public SettingsWindow()
+    private readonly nint _ownerHwnd;
+
+    public SettingsWindow(nint ownerHwnd)
     {
         ViewModel = new SettingsViewModel(new SettingsStore(), new PresetsStore());
         InitializeComponent();
         AppWindow.Resize(new SizeInt32(820, 600));
+
+        // Disable the owner so this window behaves modally — clicks on the owner are eaten until
+        // the user closes Settings. Re-enable when we close. Mirrors the ContentDialog UX of the
+        // About dialog ("Settings should be modal and Escape should close it").
+        _ownerHwnd = ownerHwnd;
+        if (_ownerHwnd != 0) EnableWindow(_ownerHwnd, false);
+        Closed += (_, _) =>
+        {
+            if (_ownerHwnd != 0)
+            {
+                EnableWindow(_ownerHwnd, true);
+                SetForegroundWindow(_ownerHwnd);
+            }
+        };
     }
+
+    /// <summary>Parameterless ctor kept so the XAML compiler stays happy; production should
+    /// always go through the owner-aware overload.</summary>
+    public SettingsWindow() : this(ownerHwnd: 0) { }
 
     private async void OnBrowseEditorClicked(object sender, RoutedEventArgs e)
     {
@@ -40,6 +62,20 @@ public sealed partial class SettingsWindow : Window
         ViewModel.SaveAll();
         Close();
     }
+
+    private void OnEscapePressed(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    {
+        // Escape mirrors the Close button — save and close. Same gesture the About dialog uses.
+        args.Handled = true;
+        ViewModel.SaveAll();
+        Close();
+    }
+
+    [DllImport("user32.dll")]
+    private static extern bool EnableWindow(nint hWnd, bool bEnable);
+
+    [DllImport("user32.dll")]
+    private static extern bool SetForegroundWindow(nint hWnd);
 
     private async void OnResetEverythingClicked(object sender, RoutedEventArgs e)
     {

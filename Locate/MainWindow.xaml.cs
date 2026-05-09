@@ -248,7 +248,7 @@ public sealed partial class MainWindow : Window
     // ---- Top-bar buttons ----
     private void OnSettingsClicked(object sender, RoutedEventArgs e)
     {
-        var window = new SettingsWindow();
+        var window = new SettingsWindow(_windowHandle);
         window.Closed += (_, _) =>
         {
             ViewModel.ReloadPresets();
