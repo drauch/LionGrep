@@ -25,12 +25,12 @@ internal sealed class AppDriver
     // ---- Locate elements ---------------------------------------------------
 
     public TextBox TextBox(string automationId)
-        => _window.FindFirstDescendant(_cf.ByAutomationId(automationId)).AsTextBox();
+        => Required(_window.FindFirstDescendant(_cf.ByAutomationId(automationId)),
+            $"TextBox with AutomationId='{automationId}'").AsTextBox();
 
     public CheckBox CheckBoxByContent(string content)
-        => _window
-            .FindFirstDescendant(_cf.ByControlType(ControlType.CheckBox).And(_cf.ByName(content)))
-            .AsCheckBox();
+        => Required(_window.FindFirstDescendant(_cf.ByControlType(ControlType.CheckBox).And(_cf.ByName(content))),
+            $"CheckBox with content '{content}'").AsCheckBox();
 
     public Button ButtonByContent(string content)
     {
@@ -48,10 +48,17 @@ internal sealed class AppDriver
     }
 
     public Button ToggleButtonByAutomationId(string automationId)
-        => _window.FindFirstDescendant(_cf.ByAutomationId(automationId)).AsButton();
+        => Required(_window.FindFirstDescendant(_cf.ByAutomationId(automationId)),
+            $"ToggleButton with AutomationId='{automationId}'").AsButton();
 
     public ListBox ResultsList()
-        => _window.FindFirstDescendant(_cf.ByAutomationId("ResultsList")).AsListBox();
+        => Required(_window.FindFirstDescendant(_cf.ByAutomationId("ResultsList")),
+            "ResultsList").AsListBox();
+
+    private static AutomationElement Required(AutomationElement? element, string description)
+        => element ?? throw new InvalidOperationException(
+            $"UIA element not found: {description}. The window may not be ready, or the AutomationId/Name "
+            + "may have changed in XAML. Inspect with FlaUInspect / accessibility tree to confirm.");
 
     // ---- Form helpers ------------------------------------------------------
 
