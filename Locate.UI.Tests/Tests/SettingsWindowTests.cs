@@ -65,6 +65,67 @@ public class SettingsWindowTests
     }
 
     [Test]
+    public void ResetEverything_ClearsRegistrySandbox()
+    {
+        // Before-state: trigger a search so a "LastForm" snapshot definitely lands in the sandbox.
+        _driver.ResetForm();
+        _driver.SetText("SearchPatternBox", CorpusBuilder.OnlyInOne);
+        _driver.SetCheck("Case sensitive", true);
+        _driver.TriggerSearch();
+        _driver.WaitForSearchToFinish();
+
+        using (var sandbox = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(AppFixture.SandboxRegistryPath))
+        {
+            Assert.That(sandbox, Is.Not.Null, "Sandbox key should now exist (search just wrote LastForm + recents).");
+            Assert.That(sandbox!.SubKeyCount + sandbox.ValueCount, Is.GreaterThan(0));
+        }
+
+        // Open Settings, click "Reset everything…", confirm in the dialog.
+        var settingsBtn = AppFixture.MainWindow.FindFirstDescendant(
+            AppFixture.Automation.ConditionFactory.ByControlType(ControlType.Button)
+                .And(AppFixture.Automation.ConditionFactory.ByName("Settings")));
+        settingsBtn!.AsButton().Invoke();
+        Thread.Sleep(800);
+
+        var settingsWindow = AppFixture.App.GetAllTopLevelWindows(AppFixture.Automation)
+            .FirstOrDefault(w => (w.Title ?? "").Contains("Settings", StringComparison.OrdinalIgnoreCase));
+        Assert.That(settingsWindow, Is.Not.Null, "Settings window did not open.");
+
+        var resetBtn = settingsWindow!.FindFirstDescendant(
+            AppFixture.Automation.ConditionFactory.ByControlType(ControlType.Button)
+                .And(AppFixture.Automation.ConditionFactory.ByName("Reset everything…")));
+        Assert.That(resetBtn, Is.Not.Null, "Reset everything… button should be present in Settings.");
+        resetBtn!.AsButton().Invoke();
+        Thread.Sleep(500);
+
+        // ContentDialog confirmation — primary button label is "Reset everything".
+        var confirm = AppFixture.MainWindow.FindFirstDescendant(
+            AppFixture.Automation.ConditionFactory.ByControlType(ControlType.Button)
+                .And(AppFixture.Automation.ConditionFactory.ByName("Reset everything")));
+        if (confirm is null)
+        {
+            // The dialog might be parented to the Settings window; try there.
+            confirm = settingsWindow.FindFirstDescendant(
+                AppFixture.Automation.ConditionFactory.ByControlType(ControlType.Button)
+                    .And(AppFixture.Automation.ConditionFactory.ByName("Reset everything")));
+        }
+        Assert.That(confirm, Is.Not.Null, "Reset confirmation dialog should expose a 'Reset everything' button.");
+        confirm!.AsButton().Invoke();
+        Thread.Sleep(800);
+
+        // After-state: sandbox key should be gone (DeleteAll wipes the whole subtree).
+        using var afterReset = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(AppFixture.SandboxRegistryPath);
+        Assert.That(afterReset, Is.Null, "Reset everything must delete the entire app subtree.");
+
+        // Close Settings.
+        var closeBtn = settingsWindow.FindFirstDescendant(
+            AppFixture.Automation.ConditionFactory.ByControlType(ControlType.Button)
+                .And(AppFixture.Automation.ConditionFactory.ByName("Close")));
+        closeBtn?.AsButton().Invoke();
+        Thread.Sleep(300);
+    }
+
+    [Test]
     public void OpenAbout_DialogShows_AndCloses()
     {
         var aboutBtn = AppFixture.MainWindow.FindFirstDescendant(

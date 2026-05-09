@@ -4,7 +4,14 @@ namespace Locate.Services;
 
 internal static class RegistryStore
 {
-    private const string RootPath = @"Software\Locate";
+    /// <summary>
+    /// HKCU subpath that holds all of Locate's persisted state (settings, presets, recents,
+    /// last-form snapshot). Defaults to <c>Software\Locate</c> for end-user runs; can be
+    /// overridden via the <c>--alternate-registry-key</c> command-line flag (parsed in
+    /// <see cref="App"/>) so end-to-end UI tests can sandbox themselves without touching
+    /// the developer's real settings.
+    /// </summary>
+    public static string RootPath { get; set; } = @"Software\Locate";
 
     public static string? ReadString(string subPath, string name)
     {

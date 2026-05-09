@@ -51,13 +51,20 @@ Every user-visible feature has at least one test. The suite is organized as:
 
 ## State and side-effects
 
-These tests **do** touch live state because they drive a real app:
+The suite is **isolated from your real settings**. At fixture start it picks a fresh subkey under
+`HKCU\Software\LocateUITests\<guid>` and launches the app with
+`--alternate-registry-key <that-subkey>`. The app routes every read and write of settings, presets,
+recents, and the last-form snapshot through that path instead of `HKCU\Software\Locate`. At fixture
+teardown the sandbox subkey (and the `LocateUITests` parent if it ends up empty) is wiped.
 
-- **Recents history** in `HKCU\Software\Locate\Recents` will accumulate entries for the test patterns and corpus path.
-- **Last-form snapshot** in `HKCU\Software\Locate\Settings\LastForm` will be overwritten when the suite ends.
+Net effect on your machine after a run:
+- **Your `HKCU\Software\Locate` is untouched.** Recents stay yours, last-form stays yours, presets stay yours.
 - **No file outside** the test temp directories is modified — Replace tests use `CorpusBuilder.CreateIsolated`.
+- One `ResetEverything_ClearsRegistrySandbox` test even verifies that **Settings → Reset everything…** wipes the entire app subtree, end-to-end. Safe to run because it operates on the sandbox.
 
-If you want a clean slate before/after a release run, manually remove `HKCU\Software\Locate` (or open Settings → Reset everything…) — that mirrors what an end user would do.
+The `--alternate-registry-key` flag is also useful outside the test suite: launch Locate with
+`Locate.exe --alternate-registry-key Software\LocateScratch` to play with a throwaway settings
+profile without touching your real one.
 
 ## Adding a new test
 

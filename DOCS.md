@@ -273,7 +273,7 @@ Opened from the gear icon in the title bar.
 - **Presets** — list view on the left, details panel on the right. Add / Remove buttons. Each preset has a name, optional hotkey, and three apply-group checkboxes. Save persists everything; Close also saves.
 - **Reset everything…** (footer, left side) — wipes the entire `HKCU\Software\Locate` registry hive: settings, presets, recents, and the last-form snapshot. Confirmation dialog protects against accidents; the action is irreversible.
 
-All settings persist under `HKCU\Software\Locate`.
+All settings persist under `HKCU\Software\Locate` by default. To run a sandboxed instance — handy for testing settings UI, demos, or tools like the FlaUI smoke suite — pass `--alternate-registry-key <HKCU subpath>` on the command line, and **all** persisted state (settings, presets, recents, last-form snapshot) is redirected to that subkey instead. Example: `Locate.exe --alternate-registry-key Software\LocateScratch` runs against a throwaway profile and never touches your real `HKCU\Software\Locate`.
 
 ---
 

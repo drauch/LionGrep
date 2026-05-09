@@ -34,7 +34,33 @@ namespace Locate
         /// </summary>
         public App()
         {
+            // Parse command-line flags BEFORE InitializeComponent so anything that touches the
+            // registry during XAML init / MainWindow construction (settings load, last-form
+            // restore, presets) sees the right RootPath.
+            ApplyCommandLineOverrides(Environment.GetCommandLineArgs());
             InitializeComponent();
+        }
+
+        /// <summary>
+        /// Inspects argv for app-level flags. Currently:
+        ///   --alternate-registry-key &lt;HKCU subpath&gt;
+        ///       Redirects all persisted state (Settings, Recents, Presets, LastForm) to the
+        ///       given subpath under HKCU. Used by Locate.UI.Tests to run end-to-end smoke
+        ///       tests against an isolated registry tree, so the developer's real settings
+        ///       (and recents, and "remember-me" toggles) survive a test run untouched.
+        /// </summary>
+        private static void ApplyCommandLineOverrides(string[] args)
+        {
+            for (var i = 0; i < args.Length - 1; i++)
+            {
+                if (string.Equals(args[i], "--alternate-registry-key", StringComparison.OrdinalIgnoreCase))
+                {
+                    var path = args[i + 1].Trim().TrimStart('\\');
+                    if (!string.IsNullOrEmpty(path))
+                        Services.RegistryStore.RootPath = path;
+                    return;
+                }
+            }
         }
 
         /// <summary>
