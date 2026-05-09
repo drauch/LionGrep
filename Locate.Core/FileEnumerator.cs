@@ -103,9 +103,13 @@ public sealed class FileEnumerator
 
     private static bool PassesDate(DateTime mtimeUtc, DateFilter filter)
     {
-        // Filter dates are user-thought local-time dates (the CalendarDatePicker hands us DateTimeOffsets
-        // anchored to local). Compare in local to avoid edge cases like "after midnight in local but the
-        // file's UTC mtime is still yesterday's UTC date".
+        // Filter dates are user-thought *calendar dates* — the WinUI CalendarDatePicker emits a
+        // DateTimeOffset, the VM unwraps it via .DateTime (which strips the offset and yields a
+        // DateTime with Kind = Unspecified, numerically equal to the local-time midnight the user
+        // picked). The file mtime here arrives as UTC, so we have to convert it to local before
+        // taking .Date — otherwise a file written at 11 PM local in UTC+2 has a UTC date of 9 PM
+        // the same day, but a file written at 1 AM local has a UTC date of "yesterday", which would
+        // mis-classify it against a filter the user thought of in local-calendar terms.
         var fileDate = mtimeUtc.ToLocalTime().Date;
         var from = filter.From.Date;
         return filter.Mode switch

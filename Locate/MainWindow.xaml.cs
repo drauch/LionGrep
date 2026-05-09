@@ -890,11 +890,13 @@ public sealed partial class MainWindow : Window
     private void OnEscapeAccelerator(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
     {
         args.Handled = true;
-        // Priority order:
-        //   1. If the filter panel is open, close it (and clear the filter via the VM hook).
-        //      This always wins so the user's first Esc gets them back to the full result set.
-        //   2. Otherwise, if a search is in flight, cancel it.
-        //   3. And always restore the form row so the search inputs are visible again.
+        // Layered Escape, exactly one layer per press:
+        //   1. If the filter panel is open, close it (the VM hook also clears FilterText). Done — the
+        //      user must press Esc again to act on the next layer. This is intentional per the user's
+        //      explicit request: "first Esc closes the filter, only the second Esc shows the form".
+        //   2. Otherwise, if a search is in flight, cancel it AND restore the form row so the inputs
+        //      are visible again — the cancel and the restore are the same atomic gesture.
+        //   3. Otherwise, just restore the form row.
         if (ViewModel.IsResultFilterPanelOpen)
         {
             ViewModel.IsResultFilterPanelOpen = false;
