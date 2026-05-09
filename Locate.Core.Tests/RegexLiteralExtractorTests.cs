@@ -38,6 +38,14 @@ public class RegexLiteralExtractorTests
     [TestCase(@"\xAA",             ExpectedResult = "<none>")] // hex escape — no useful literal at all
     [TestCase(@"foo\xAAbar",       ExpectedResult = "foo")]   // hex escape splits the run
     [TestCase(@"foo\cXbar",        ExpectedResult = "foo")]   // control-char escape splits the run
+    // R14 — lazy quantifiers: ? * + each have a trailing-? lazy form. The atom-required-ness is
+    // identical to the greedy form; we just have to skip past the trailing ?.
+    [TestCase(@"FooBar+?",         ExpectedResult = "FooBar")]   // +? — atom required ≥ 1 time
+    [TestCase(@"FooBar*?",         ExpectedResult = "FooBa")]    // *? — atom optional, drops 'r'
+    [TestCase(@"Fooa??b",          ExpectedResult = "Foo")]      // ?? — 'a' optional; "Foo" (3) beats trailing "b" (1)
+    // R14 — nested groups exercise SkipBalanced's depth counter.
+    [TestCase(@"((alpha))bravo",   ExpectedResult = "bravo")]    // group skipped, then 5-char run wins
+    [TestCase(@"prefix((a|b))suffix", ExpectedResult = "prefix")] // first run wins on a length tie
     public string ExtractsRequiredLiteral(string pattern)
         => RegexLiteralExtractor.TryExtractRequiredLiteral(pattern) ?? "<none>";
 

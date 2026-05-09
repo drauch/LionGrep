@@ -6,6 +6,8 @@ namespace Locate.Core.Tests.Logic;
 public class HotkeyParserTests
 {
     [TestCase("F2",          0x71, HotkeyParser.Modifier.None)]
+    [TestCase("f2",          0x71, HotkeyParser.Modifier.None)]   // R14 — lowercase F
+    [TestCase("ctrl+f12",    0x7B, HotkeyParser.Modifier.Control)]
     [TestCase("Ctrl+1",      0x31, HotkeyParser.Modifier.Control)]
     [TestCase("Ctrl+Shift+F",0x46, HotkeyParser.Modifier.Control | HotkeyParser.Modifier.Shift)]
     [TestCase("Alt+F2",      0x71, HotkeyParser.Modifier.Alt)]

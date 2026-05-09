@@ -69,6 +69,33 @@ public class ReplaceTests
     }
 
     [Test]
+    public void Undo_WhenBakIsMissing_ReportsFailedCount()
+    {
+        // R14 — Undo's "failed++" path is exercised when the user manually deletes a .bak between
+        // the replace and the undo. Verify the summary acknowledges the failure rather than
+        // silently restoring zero files.
+        var replaceBtn = _driver.ButtonByContent("Replace…");
+        replaceBtn.Invoke();
+        Thread.Sleep(400);
+        var primary = AppFixture.MainWindow.FindFirstDescendant(
+            AppFixture.Automation.ConditionFactory.ByControlType(ControlType.Button)
+                .And(AppFixture.Automation.ConditionFactory.ByName("Replace with backups")));
+        primary!.AsButton().Invoke();
+        Thread.Sleep(800);
+
+        // Sabotage: delete the .bak files we just wrote.
+        foreach (var bak in Directory.GetFiles(_isolatedDir, "*.bak"))
+            File.Delete(bak);
+
+        _driver.ButtonByContent("Undo").Invoke();
+        Thread.Sleep(800);
+
+        var summary = _driver.ReadResultsSummary();
+        Assert.That(summary, Does.Contain("failed").IgnoreCase,
+            "Undo summary should mention the .bak-missing failures, not silently report 0 restored.");
+    }
+
+    [Test]
     public void ReplaceWithBackups_WritesBakFiles_AndUndoRestoresThem()
     {
         var originalA = File.ReadAllText(Path.Combine(_isolatedDir, "a.cs"));
