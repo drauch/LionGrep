@@ -209,6 +209,11 @@ public sealed class FileSearcher
         var lineStart = 0;
         var lineNumber = 1;
 
+        // Cache the most recently decoded line so dense matches on a single line don't re-allocate
+        // and re-decode the same string per hit.
+        var cachedLineNumber = 0;
+        string? cachedLineText = null;
+
         var pos = 0;
         while (pos <= content.Length - patternBytes.Length)
         {
@@ -245,14 +250,23 @@ public sealed class FileSearcher
                 lineNumber++;
             }
 
-            // End of the line containing the hit.
-            var afterMatch = hitEnd;
-            var nlIndex = content[afterMatch..].IndexOf((byte)'\n');
-            var lineEnd = nlIndex < 0 ? content.Length : afterMatch + nlIndex;
-            if (lineEnd > lineStart && content[lineEnd - 1] == (byte)'\r') lineEnd--;
+            string lineText;
+            if (cachedLineNumber == lineNumber && cachedLineText is not null)
+            {
+                lineText = cachedLineText;
+            }
+            else
+            {
+                // End of the line containing the hit.
+                var afterMatch = hitEnd;
+                var nlIndex = content[afterMatch..].IndexOf((byte)'\n');
+                var lineEnd = nlIndex < 0 ? content.Length : afterMatch + nlIndex;
+                if (lineEnd > lineStart && content[lineEnd - 1] == (byte)'\r') lineEnd--;
 
-            var lineBytes = content[lineStart..lineEnd];
-            var lineText = encoding.GetString(lineBytes);
+                lineText = encoding.GetString(content[lineStart..lineEnd]);
+                cachedLineNumber = lineNumber;
+                cachedLineText = lineText;
+            }
 
             // The column reported to the UI is char-based, not byte-based. For the all-ASCII prefix case
             // (very common in code), char count equals byte count and we skip the decode. Otherwise we

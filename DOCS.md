@@ -307,6 +307,25 @@ All settings persist under `HKCU\Software\Locate`.
 - **Small-file shortcut.** Files smaller than 64 KB skip mmap and use `File.ReadAllBytes` instead. Mmap setup cost (Section object + view mapping + `AcquirePointer`/`ReleasePointer`) dominates at small sizes; on NTFS + SSD a buffered read is strictly faster.
 - **Single decode pass per matched line.** UTF-8 emits at most one char per byte, so the decode buffer is sized from the byte length directly — no separate `GetCharCount` pass.
 - **Whole-file regex on demand.** `DotMatchesNewline` triggers a one-shot decode + whole-text regex run; line-by-line matching is preserved for the common (single-line) case where it's cheaper.
+- **Line-text reuse for dense matches.** When N hits land on the same line (e.g. `the` in English prose), the byte-fast-path decodes the line text once and shares the string across all `LineMatch` records on that line.
+- **`Ascii.IsValid` for the all-ASCII checks.** SIMD-vectorized in the BCL since .NET 8; we don't roll our own loop.
+
+### 12.2 Benchmarking
+
+`Locate.Bench/` is a separate console project with a BenchmarkDotNet suite plus a deterministic synthetic-corpus generator. The generator caches by `(profile, seed)` so repeated runs hit the exact same files on disk — which is also what makes ripgrep-comparable measurements possible:
+
+```pwsh
+# Build (or reuse) the corpus, get its absolute path on stdout
+$corpus = (dotnet run --project Locate.Bench -c Release -- prepare code).Trim()
+
+# Time ripgrep on it
+Measure-Command { rg --no-stats -c blazingNeedle $corpus | Out-Null }
+
+# Run our benchmark suite — the LiteralCaseSensitive case targets the same workload
+dotnet run --project Locate.Bench -c Release -- --filter '*LiteralCaseSensitive*'
+```
+
+See `Locate.Bench/README.md` for the available profiles, the patterns each benchmark exercises, and tips for fair comparisons (matching OS page-cache state, etc.).
 
 ---
 

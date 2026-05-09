@@ -4,6 +4,7 @@
     <Platform Name="x64" />
     <Platform Name="x86" />
   </Configurations>
+  <Project Path="Locate.Bench/Locate.Bench.csproj" />
   <Project Path="Locate.Core.Tests/Locate.Core.Tests.csproj" />
   <Project Path="Locate.Core/Locate.Core.csproj" />
   <Project Path="Locate/Locate.csproj">
