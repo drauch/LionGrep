@@ -304,12 +304,9 @@ All settings persist under `HKCU\Software\Locate` by default. To run a sandboxed
 
 - **Unit tests** (`Locate.Core.Tests`, NUnit) — the search engine, the view-logic helpers (`HotkeyParser`, `ResponsiveLayout`, `SortDirectionLogic`, `CsvBuilder`), and `RegexLiteralExtractor`. ~200 tests, run in milliseconds, no UI thread.
 - **The XAML files** (`MainWindow.xaml`, `SettingsWindow.xaml`, `AboutDialog.xaml`) are intentionally **not** unit-tested — they're declarative bindings to ObservableProperties and event handler names. The handlers in code-behind have been kept thin: each one parses the routed-event args and immediately delegates to a testable helper. Anything richer than that has been extracted into `Locate.Core.Logic`.
-- **End-to-end UI tests** are not part of the project today, but the WinUI 3 ecosystem has three viable Selenium-equivalents if we ever add a smoke suite:
-  - **FlaUI** ([flaui.org](https://flaui.org/)) — idiomatic .NET wrapper over UI Automation, NuGet-installable, NUnit-friendly. Best fit if we want to drive the actual app from xUnit/NUnit code with assertions like "click `SearchInResultsToggle`, type 'foo' in `FilterBox`, expect ResultsList count to drop".
-  - **WinAppDriver** + **Appium** — WebDriver-protocol drivers for Windows desktop. Cross-platform tooling, Selenium-style. Microsoft's repo is in maintenance, but Appium's `WindowsDriver` keeps it usable.
-  - **Microsoft UI Automation** — the OS API the above two sit on. Lower level; no need to use directly unless you have a very specific automation requirement.
+- **End-to-end UI smoke tests** live in `Locate.UI.Tests/` — NUnit fixtures driving the real WinUI window via FlaUI 5 / UI Automation. They run sequentially against a single live process (`MaxCpuCount=1` in `Locate.UI.Tests.runsettings`), use a deterministic synthetic corpus from `CorpusBuilder`, and isolate themselves from the developer's settings via `--alternate-registry-key Software\LocateUITests\<guid>` (sandbox subkey wiped at fixture teardown). See `Locate.UI.Tests/README.md` for the coverage matrix and prerequisites (interactive desktop session, pre-built x64 `Locate.exe`).
 
-  None of these are wired up yet. They'd run against a built, signed WinUI binary (not a unit-test process), which is why they're separate from the fast NUnit suite.
+  The suite is **slow on purpose** — it's the pre-release smoke gate, not the inner loop. Run the fast NUnit `Locate.Core.Tests` for everyday work; run `Locate.UI.Tests` once before you tag a release.
 
 ### 12.1 Performance levers in the engine
 
@@ -345,8 +342,6 @@ See `Locate.Bench/README.md` for the available profiles, the patterns each bench
 
 - Search > 2 GiB — needs a streamed, chunked-with-overlap path.
 - Replace > 4 MiB — needs streamed temp-file rewrite.
-- Multi-line regex (Dot-matches-newline currently line-oriented).
-- "Inverse search" / "Search in currently found files" SplitButton items are stubs.
 - Parallel `BatchReplacer` orchestrator (current implementation is sequential).
 - Global system-wide hotkeys for presets (in-app only today).
 - Live-update of preset name in the Settings list (Preset doesn't implement `INotifyPropertyChanged` yet).
