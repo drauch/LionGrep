@@ -11,14 +11,7 @@ internal sealed class RegexLineReplacer : ILineReplacer
 
     public RegexLineReplacer(string pattern, bool caseSensitive, bool wholeWord, bool dotMatchesNewline, string replacement, bool preserveCase)
     {
-        if (wholeWord)
-            pattern = $@"\b(?:{pattern})\b";
-
-        var options = RegexOptions.CultureInvariant | RegexOptions.Compiled;
-        if (!caseSensitive) options |= RegexOptions.IgnoreCase;
-        if (dotMatchesNewline) options |= RegexOptions.Singleline;
-
-        _regex = new Regex(pattern, options);
+        _regex = RegexBuilder.Build(pattern, caseSensitive, wholeWord, dotMatchesNewline);
         _replacement = replacement;
         _preserveCase = preserveCase;
     }

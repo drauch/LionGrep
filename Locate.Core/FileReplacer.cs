@@ -54,7 +54,7 @@ public sealed class FileReplacer
 
     private static (string Output, int Count) ReplaceWholeText(string text, ReplacementContext ctx, CancellationToken ct)
     {
-        var regex = BuildRegex(ctx.Search);
+        var regex = RegexBuilder.Build(ctx.Search);
         var count = 0;
         var output = regex.Replace(text, match =>
         {
@@ -64,15 +64,6 @@ public sealed class FileReplacer
             return ctx.PreserveCase ? CasePreserver.Apply(expanded, match.Value) : expanded;
         });
         return (output, count);
-    }
-
-    private static Regex BuildRegex(SearchOptions options)
-    {
-        var pattern = options.WholeWord ? $@"\b(?:{options.Pattern})\b" : options.Pattern;
-        var regexOptions = RegexOptions.CultureInvariant | RegexOptions.Compiled;
-        if (!options.CaseSensitive) regexOptions |= RegexOptions.IgnoreCase;
-        if (options.DotMatchesNewline) regexOptions |= RegexOptions.Singleline;
-        return new Regex(pattern, regexOptions);
     }
 
     private static (string Output, int Count) ProcessText(string text, ILineReplacer replacer, CancellationToken ct)
