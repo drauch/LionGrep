@@ -30,6 +30,14 @@ public class RegexLiteralExtractorTests
     [TestCase(@"foa{2}b",          ExpectedResult = "foa")]
     [TestCase(@"foo\.{3}bar",      ExpectedResult = "foo.")]
     [TestCase(@"a{1}b",            ExpectedResult = "ab")]   // {1} is exactly-once; the run continues
+    // R7 — escapes that don't represent literal chars used to be appended as if they did. \p{L}
+    // matches any Unicode letter (NOT the byte sequence "p"+"L"+"}"), so the prefilter treating
+    // the 'p' as a literal char was a silent missed-match bug.
+    [TestCase(@"\p{L}foo",         ExpectedResult = "foo")]   // was returning "pfoo" (broken)
+    [TestCase(@"\P{Lu}bar",        ExpectedResult = "bar")]   // negated category — same shape
+    [TestCase(@"\xAA",             ExpectedResult = "<none>")] // hex escape — no useful literal at all
+    [TestCase(@"foo\xAAbar",       ExpectedResult = "foo")]   // hex escape splits the run
+    [TestCase(@"foo\cXbar",        ExpectedResult = "foo")]   // control-char escape splits the run
     public string ExtractsRequiredLiteral(string pattern)
         => RegexLiteralExtractor.TryExtractRequiredLiteral(pattern) ?? "<none>";
 

@@ -44,6 +44,43 @@ internal static class RegexLiteralExtractor
                     continue;
                 }
 
+                // \p{Cat} / \P{Cat} — Unicode-category escape; consume the {…} block.
+                if (next is 'p' or 'P')
+                {
+                    EndRun(current, ref best);
+                    var bracePos = i + 2;
+                    if (bracePos < pattern.Length && pattern[bracePos] == '{')
+                    {
+                        var braceClose = pattern.IndexOf('}', bracePos);
+                        i = braceClose < 0 ? pattern.Length : SkipQuantifierIfAny(pattern, braceClose + 1);
+                    }
+                    else
+                    {
+                        i = SkipQuantifierIfAny(pattern, i + 2);
+                    }
+                    continue;
+                }
+
+                // \xHH (hex), \uHHHH (Unicode), \cX (control-char), \k<name> (named back-ref) all
+                // produce a single character that we conservatively treat as a run-breaker — without
+                // running the regex parser ourselves we can't know which char it is, and getting it
+                // wrong is a silent missed-match bug. Skipping past the escape's payload.
+                if (next is 'x' or 'u' or 'c' or 'k' or 'a' or 'e')
+                {
+                    EndRun(current, ref best);
+                    i = next switch
+                    {
+                        'x' => i + 4,                                     // \xHH
+                        'u' => i + 6,                                     // \uHHHH
+                        'c' => i + 3,                                     // \cX
+                        'k' => SkipUntilClosingAngle(pattern, i + 2),     // \k<name>
+                        _   => i + 2,                                     // \a, \e
+                    };
+                    if (i > pattern.Length) i = pattern.Length;
+                    i = SkipQuantifierIfAny(pattern, i);
+                    continue;
+                }
+
                 // Escaped literal char (e.g. \., \\, \(, \", \n). Account for trailing quantifier.
                 var afterEscape = i + 2;
                 if (IsOptionalQuantifier(pattern, afterEscape))
@@ -131,6 +168,14 @@ internal static class RegexLiteralExtractor
 
     private static bool IsClassOrAnchorEscape(char c) =>
         c is 'd' or 'D' or 'w' or 'W' or 's' or 'S' or 'b' or 'B' or 'A' or 'Z' or 'z' or 'G';
+
+    private static int SkipUntilClosingAngle(string pattern, int startAt)
+    {
+        // \k<name> — find the matching '>'. If absent (malformed), bail to end of pattern so the
+        // outer loop terminates rather than spinning.
+        var angleClose = pattern.IndexOf('>', startAt);
+        return angleClose < 0 ? pattern.Length : angleClose + 1;
+    }
 
     /// <summary>Translates the char following <c>\</c> into its literal value where the regex engine
     /// would match it as that char (e.g. <c>\n</c> → newline, <c>\.</c> → dot, <c>\\</c> → backslash).
