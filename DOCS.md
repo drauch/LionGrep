@@ -295,9 +295,21 @@ All settings persist under `HKCU\Software\Locate`.
 
 ## 12. Architecture notes (for the curious)
 
-- `Locate.Core` — the search/replace engine. Pure .NET, no UI deps. Memory-mapped I/O, SIMD-vectorized byte search via `IndexOf`, RFC-style BOM detection, ordinal/`OrdinalIgnoreCase` semantics. Tested with 120+ NUnit tests against real temp files (no mocks).
+- `Locate.Core` — the search/replace engine **plus** view-logic helpers (`Locate.Core.Logic`). Pure .NET, no UI deps. Memory-mapped I/O, SIMD-vectorized byte search via `IndexOf`, RFC-style BOM detection, ordinal/`OrdinalIgnoreCase` semantics. Engine + logic tested with 200+ NUnit tests against real temp files (no mocks).
+- `Locate.Core.Logic` — code that used to live in the WinUI code-behind: `HotkeyParser`, `ResponsiveLayout` (column-width breakpoints), `SortDirectionLogic` (None → Asc → Desc cycle + arrow rendering), `CsvBuilder`. Each is a pure function with WinUI-free inputs and outputs, and each is unit-tested. The window code-behind translates between these helpers and the WinUI types.
 - `Locate.App` — WinUI 3 shell, MVVM via `CommunityToolkit.Mvvm` source generators. Custom title bar, custom CheckBox template for compact density, `ColumnResizer` UserControl wrapping a `Thumb` (Thumb is sealed in WinUI 3, so we can't subclass it directly).
 - Persistence: registry under `HKCU\Software\Locate\…` (recents, settings, presets, last-form snapshot).
+
+### Testing strategy
+
+- **Unit tests** (`Locate.Core.Tests`, NUnit) — the search engine, the view-logic helpers (`HotkeyParser`, `ResponsiveLayout`, `SortDirectionLogic`, `CsvBuilder`), and `RegexLiteralExtractor`. ~200 tests, run in milliseconds, no UI thread.
+- **The XAML files** (`MainWindow.xaml`, `SettingsWindow.xaml`, `AboutDialog.xaml`) are intentionally **not** unit-tested — they're declarative bindings to ObservableProperties and event handler names. The handlers in code-behind have been kept thin: each one parses the routed-event args and immediately delegates to a testable helper. Anything richer than that has been extracted into `Locate.Core.Logic`.
+- **End-to-end UI tests** are not part of the project today, but the WinUI 3 ecosystem has three viable Selenium-equivalents if we ever add a smoke suite:
+  - **FlaUI** ([flaui.org](https://flaui.org/)) — idiomatic .NET wrapper over UI Automation, NuGet-installable, NUnit-friendly. Best fit if we want to drive the actual app from xUnit/NUnit code with assertions like "click `SearchInResultsToggle`, type 'foo' in `FilterBox`, expect ResultsList count to drop".
+  - **WinAppDriver** + **Appium** — WebDriver-protocol drivers for Windows desktop. Cross-platform tooling, Selenium-style. Microsoft's repo is in maintenance, but Appium's `WindowsDriver` keeps it usable.
+  - **Microsoft UI Automation** — the OS API the above two sit on. Lower level; no need to use directly unless you have a very specific automation requirement.
+
+  None of these are wired up yet. They'd run against a built, signed WinUI binary (not a unit-test process), which is why they're separate from the fast NUnit suite.
 
 ### 12.1 Performance levers in the engine
 

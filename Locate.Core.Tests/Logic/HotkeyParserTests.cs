@@ -1,0 +1,36 @@
+using Locate.Core.Logic;
+using NUnit.Framework;
+
+namespace Locate.Core.Tests.Logic;
+
+public class HotkeyParserTests
+{
+    [TestCase("F2",          0x71, HotkeyParser.Modifier.None)]
+    [TestCase("Ctrl+1",      0x31, HotkeyParser.Modifier.Control)]
+    [TestCase("Ctrl+Shift+F",0x46, HotkeyParser.Modifier.Control | HotkeyParser.Modifier.Shift)]
+    [TestCase("Alt+F2",      0x71, HotkeyParser.Modifier.Alt)]
+    [TestCase("Win+A",       0x41, HotkeyParser.Modifier.Windows)]
+    [TestCase("control+z",   0x5A, HotkeyParser.Modifier.Control)]   // case-insensitive modifier name
+    [TestCase("Ctrl+Alt+Shift+F12", 0x7B, HotkeyParser.Modifier.Control | HotkeyParser.Modifier.Alt | HotkeyParser.Modifier.Shift)]
+    [TestCase("F24",         0x87, HotkeyParser.Modifier.None)]
+    public void Parses_StandardHotkeys(string input, int expectedVk, HotkeyParser.Modifier expectedMods)
+    {
+        Assert.That(HotkeyParser.TryParse(input, out var parsed), Is.True);
+        Assert.That(parsed.VirtualKeyCode, Is.EqualTo(expectedVk));
+        Assert.That(parsed.Modifiers, Is.EqualTo(expectedMods));
+    }
+
+    [TestCase("")]
+    [TestCase(null)]
+    [TestCase("   ")]
+    [TestCase("F25")]                        // out of range
+    [TestCase("F0")]                         // out of range
+    [TestCase("Ctrl+Foo")]                   // unrecognized key token
+    [TestCase("Bogus+A")]                    // unrecognized modifier
+    [TestCase("Ctrl++")]                     // empty key after the trailing +
+    [TestCase("AB")]                         // multi-letter key
+    public void Rejects_InvalidInput(string? input)
+    {
+        Assert.That(HotkeyParser.TryParse(input, out _), Is.False);
+    }
+}

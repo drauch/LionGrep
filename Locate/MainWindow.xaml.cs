@@ -1,4 +1,5 @@
 using System.Text;
+using Locate.Core.Logic;
 using Locate.Models;
 using Locate.Services;
 using Locate.ViewModels;
@@ -36,7 +37,6 @@ public sealed partial class MainWindow : Window
     private bool _initialDefaultSortApplied;
     private bool _initialFormFitDone;
     private double _cachedFormHeight;
-    private enum SortDirection { None, Ascending, Descending }
 
     public MainWindow()
     {
@@ -164,31 +164,20 @@ public sealed partial class MainWindow : Window
 
     private void ApplyBreakpointFor(double width)
     {
-        var bp = width switch
-        {
-            < 600 => 0,
-            < 700 => 1,
-            < 750 => 2,
-            < 820 => 3,
-            < 900 => 4,
-            < 1050 => 5,
-            _ => 6,
-        };
+        var bp = ResponsiveLayout.GetBreakpoint(width);
         if (bp == _lastBreakpoint) return;
         _lastBreakpoint = bp;
 
-        // Hide priority (most aggressive first): Date → Path → Size → Encoding → Ext → Matches.
-        ViewModel.MatchesWidth = bp >= 1 ? new GridLength(70) : new GridLength(0);
-        ViewModel.ExtWidth = bp >= 2 ? new GridLength(50) : new GridLength(0);
-        ViewModel.EncodingWidth = bp >= 3 ? new GridLength(80) : new GridLength(0);
-        ViewModel.SizeWidth = bp >= 4 ? new GridLength(70) : new GridLength(0);
-        ViewModel.PathWidth = bp >= 5 ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
-        ViewModel.DateWidth = bp >= 6 ? new GridLength(160) : new GridLength(0);
-        // Name is always visible
-        ViewModel.NameWidth = new GridLength(240);
+        var widths = ResponsiveLayout.GetColumnWidths(bp);
+        ViewModel.NameWidth     = ToGridLength(widths.Name);
+        ViewModel.SizeWidth     = ToGridLength(widths.Size);
+        ViewModel.MatchesWidth  = ToGridLength(widths.Matches);
+        ViewModel.PathWidth     = widths.PathStretch ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
+        ViewModel.ExtWidth      = ToGridLength(widths.Ext);
+        ViewModel.EncodingWidth = ToGridLength(widths.Encoding);
+        ViewModel.DateWidth     = ToGridLength(widths.Date);
 
-        // Stack Size/Date below the file-name pair when narrow.
-        if (bp <= 1)
+        if (widths.StackSizeDateBelowFileName)
         {
             FilterLeftCol.Width = new GridLength(1, GridUnitType.Star);
             FilterRightCol.Width = new GridLength(0);
@@ -204,6 +193,8 @@ public sealed partial class MainWindow : Window
             Grid.SetRow(SizeDateGrid, 0);
         }
     }
+
+    private static GridLength ToGridLength(int pixels) => pixels <= 0 ? new GridLength(0) : new GridLength(pixels);
 
     private bool _filterRow2Added;
     private void EnsureFilterRow2()
@@ -779,37 +770,13 @@ public sealed partial class MainWindow : Window
 
     private static string BuildCsv(IReadOnlyList<FileMatchViewModel> files)
     {
-        var sb = new StringBuilder();
-        sb.AppendLine("Name,Path,Line,Column,Text");
-        foreach (var f in files)
-        {
-            if (f.Lines.Count == 0)
-            {
-                sb.Append(CsvEscape(f.FileName)).Append(',')
-                  .Append(CsvEscape(f.Path)).Append(',')
-                  .Append(',').Append(',')
-                  .AppendLine();
-                continue;
-            }
-            foreach (var l in f.Lines)
-            {
-                sb.Append(CsvEscape(f.FileName)).Append(',')
-                  .Append(CsvEscape(f.Path)).Append(',')
-                  .Append(l.LineNumber).Append(',')
-                  .Append(l.Column + 1).Append(',')
-                  .Append(CsvEscape(l.LineText))
-                  .AppendLine();
-            }
-        }
-        return sb.ToString();
-    }
-
-    private static string CsvEscape(string value)
-    {
-        if (value is null) return "";
-        var needsQuotes = value.AsSpan().IndexOfAny(",\"\r\n".AsSpan()) >= 0;
-        if (!needsQuotes) return value;
-        return "\"" + value.Replace("\"", "\"\"") + "\"";
+        // Translate FileMatchViewModel into the WinUI-free DTO shape the testable CsvBuilder accepts.
+        // l.Column + 1 keeps the human-friendly 1-based column the existing CSV exports use.
+        var entries = files.Select(f => new CsvBuilder.FileEntry(
+            f.FileName,
+            f.Path,
+            f.Lines.Select(l => new CsvBuilder.LineEntry(l.LineNumber, l.Column + 1, l.LineText)).ToList()));
+        return CsvBuilder.Build(entries);
     }
 
     private static void CopyToClipboard(string text)
@@ -993,12 +960,7 @@ public sealed partial class MainWindow : Window
 
         if (column == _sortColumn)
         {
-            _sortDirection = _sortDirection switch
-            {
-                SortDirection.None => SortDirection.Ascending,
-                SortDirection.Ascending => SortDirection.Descending,
-                _ => SortDirection.None,
-            };
+            _sortDirection = SortDirectionLogic.ToggleNext(_sortDirection);
             if (_sortDirection == SortDirection.None) _sortColumn = null;
         }
         else
@@ -1051,41 +1013,21 @@ public sealed partial class MainWindow : Window
     }
 
     private string HeaderText(string column, string display) =>
-        column == _sortColumn
-            ? (_sortDirection == SortDirection.Ascending ? $"{display} ▲" : $"{display} ▼")
-            : display;
+        SortDirectionLogic.FormatHeader(display, column == _sortColumn, _sortDirection);
 
     private static bool TryParseHotkey(string hotkey, out VirtualKey key, out VirtualKeyModifiers modifiers)
     {
-        key = VirtualKey.None;
-        modifiers = VirtualKeyModifiers.None;
-        if (string.IsNullOrWhiteSpace(hotkey)) return false;
-
-        var parts = hotkey.Split('+', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        for (var i = 0; i < parts.Length - 1; i++)
+        // Numeric values of HotkeyParser.Modifier and the Win32 VK_* codes are aligned with the WinUI
+        // VirtualKeyModifiers / VirtualKey enums by design, so a direct cast is safe and stays in sync
+        // with whatever the parser returns.
+        if (HotkeyParser.TryParse(hotkey, out var parsed))
         {
-            modifiers |= parts[i].ToLowerInvariant() switch
-            {
-                "ctrl" or "control" => VirtualKeyModifiers.Control,
-                "alt" => VirtualKeyModifiers.Menu,
-                "shift" => VirtualKeyModifiers.Shift,
-                "win" or "windows" => VirtualKeyModifiers.Windows,
-                _ => VirtualKeyModifiers.None,
-            };
-        }
-
-        var last = parts[^1];
-        if (last.Length == 1)
-        {
-            var c = char.ToUpperInvariant(last[0]);
-            if (c is >= '0' and <= '9') { key = VirtualKey.Number0 + (c - '0'); return true; }
-            if (c is >= 'A' and <= 'Z') { key = VirtualKey.A + (c - 'A'); return true; }
-        }
-        if (last.StartsWith('F') && int.TryParse(last[1..], out var fn) && fn is >= 1 and <= 24)
-        {
-            key = VirtualKey.F1 + (fn - 1);
+            key = (VirtualKey)parsed.VirtualKeyCode;
+            modifiers = (VirtualKeyModifiers)parsed.Modifiers;
             return true;
         }
+        key = VirtualKey.None;
+        modifiers = VirtualKeyModifiers.None;
         return false;
     }
 
