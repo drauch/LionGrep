@@ -185,6 +185,16 @@ public partial class MainViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(FilterStatusText))]
     private string _filterText = "";
 
+    /// <summary>When true, the file path is also tested against the filter; otherwise only matched-line text is.</summary>
+    [ObservableProperty] private bool _filterIncludesPath;
+
+    /// <summary>Drives the collapsible filter row in the SEARCH RESULTS section.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ResultFilterPanelVisibility))]
+    private bool _isResultFilterPanelOpen;
+
+    public Visibility ResultFilterPanelVisibility => IsResultFilterPanelOpen ? Visibility.Visible : Visibility.Collapsed;
+
     public bool IsFiltering => !string.IsNullOrEmpty(FilterText);
     public string FilterStatusText => IsFiltering
         ? $"showing {FilteredResults.Count:N0} of {Results.Count:N0}"
@@ -237,10 +247,22 @@ public partial class MainViewModel : ObservableObject
     private bool PassesFilter(FileMatchViewModel f)
     {
         if (string.IsNullOrEmpty(FilterText)) return true;
-        if (f.Path.Contains(FilterText, StringComparison.OrdinalIgnoreCase)) return true;
+        if (FilterIncludesPath && f.Path.Contains(FilterText, StringComparison.OrdinalIgnoreCase)) return true;
         foreach (var line in f.Lines)
             if (line.LineText.Contains(FilterText, StringComparison.OrdinalIgnoreCase)) return true;
         return false;
+    }
+
+    partial void OnFilterIncludesPathChanged(bool value)
+    {
+        // The check semantic just changed — re-evaluate the visible set immediately, no debounce.
+        if (IsFiltering) RebuildFilteredResults();
+    }
+
+    partial void OnIsResultFilterPanelOpenChanged(bool value)
+    {
+        // Closing the panel clears the filter — no hidden state.
+        if (!value) FilterText = "";
     }
 
     private void RebuildFilteredResults()

@@ -383,6 +383,25 @@ public sealed partial class MainWindow : Window
     private async void OnCollapseAllClicked(object sender, RoutedEventArgs e) => await ViewModel.ExpandAllAsync(false);
     private void OnShowQueryClicked(object sender, RoutedEventArgs e) => RestoreFormRow();
 
+    private void OnSearchInResultsToggled(object sender, RoutedEventArgs e)
+    {
+        // After the binding has updated IsResultFilterPanelOpen, focus the textbox if we just opened.
+        if (sender is ToggleButton { IsChecked: true })
+        {
+            DispatcherQueue.TryEnqueue(() => FilterBox.Focus(FocusState.Programmatic));
+        }
+    }
+
+    private void OnFilterBoxKeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key == VirtualKey.Escape)
+        {
+            // Esc collapses the filter panel; the VM's OnIsResultFilterPanelOpenChanged also clears FilterText.
+            ViewModel.IsResultFilterPanelOpen = false;
+            e.Handled = true;
+        }
+    }
+
     private void OnFileRowRightTapped(object sender, RightTappedRoutedEventArgs e)
     {
         if (sender is not FrameworkElement { DataContext: FileMatchViewModel clicked }) return;

@@ -210,11 +210,15 @@ Ctrl+C is **not** bound by default — use the right-click menu (or Export butto
 
 ### 7.4 Live filter
 
-A **Filter results…** textbox sits in the SEARCH RESULTS row. It performs a case-insensitive substring match against each result's full file path **and** every matched line's text — a hit on either side keeps the file. Updates are debounced ~250 ms so typing doesn't restart the filter on every keystroke.
+Click **Search in results** in the SEARCH RESULTS row to expand a dedicated filter row below the buttons. The textbox there filters the visible result set live; updates are debounced ~250 ms so typing doesn't restart the filter on every keystroke.
 
-When a filter is active, the row shows `showing X of N` next to the textbox. **Every downstream operation respects the filter**: Export to CSV, Open in Excel, copy-as-CSV, copy paths/filenames/lines, Replace, Replace with backups, Search-in-currently-found-files, and the no-selection fallback for clipboard commands all act on the visible (filtered) set, never the master.
+By default the filter only tests against each file's **matched line text**. Tick **Also match file path** in the filter row to include the full file path in the match. The "showing X of N" indicator next to the textbox tells you what's currently visible.
 
-The master result set is preserved internally — clearing the filter restores the full list without re-running the search.
+**Closing collapses and clears.** Clicking the toggle off, or pressing **Esc** while the textbox is focused, hides the filter row and clears the filter text — no hidden filter state. Reopening starts from a clean slate.
+
+**Every downstream operation respects the filter** while it's active: Export to CSV, Open in Excel, copy-as-CSV, copy paths/filenames/lines, Replace, Replace with backups, Search-in-currently-found-files, and the no-selection fallback for clipboard commands all act on the visible (filtered) set, never the master.
+
+The master result set is preserved internally — closing the filter restores the full list without re-running the search.
 
 ### 7.5 SEARCH RESULTS section header
 
