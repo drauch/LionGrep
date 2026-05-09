@@ -290,6 +290,27 @@ public class SearcherTests
     }
 
     [Test]
+    public void NonAsciiLiteral_HighlightLength_IsCharCount_NotByteCount()
+    {
+        // R5 — "Größe" is 5 chars but 7 UTF-8 bytes. The byte-fast-path used to report 7 as
+        // LineMatch.Length, which the UI treats as a char count and overshoots the highlight by
+        // 2 chars. After the fix, Length should be the char count (5).
+        Touch("a.txt", "var name = \"Größe\";\n");
+
+        var results = _searcher.Search(new SearchRequest(
+            Roots: [_root],
+            Enumeration: new FileEnumerationOptions(),
+            Search: new SearchOptions { Pattern = "Größe", CaseSensitive = true })).ToList();
+
+        Assert.That(results, Has.Count.EqualTo(1));
+        var hit = results[0].ContentMatches.Single();
+        Assert.That(hit.Length, Is.EqualTo(5),
+            "Length must be the pattern's CHAR count, not its UTF-8 byte count.");
+        Assert.That(hit.LineText.Substring(hit.Column, hit.Length), Is.EqualTo("Größe"),
+            "Highlight extracted via Substring(Column, Length) should equal the matched pattern exactly.");
+    }
+
+    [Test]
     public void RegexPrefilter_StillReturnsAllMatches_AndIgnoresFilesWithoutLiteral()
     {
         Touch("hits.txt", "class Foo {}\n");           // contains "class" — passes prefilter, regex matches.

@@ -98,9 +98,9 @@ public sealed class FileSearcher
         if (detected.Encoding is UTF8Encoding && matcher is LiteralMatcher lit && lit.Utf8PatternBytes.Length > 0)
         {
             if (lit.CaseSensitive)
-                return SearchUtf8LiteralBytes(path, content, detected.Encoding, lit.Utf8PatternBytes, ignoreCase: false, lit.WholeWord, ct);
+                return SearchUtf8LiteralBytes(path, content, detected.Encoding, lit.Utf8PatternBytes, lit.PatternCharCount, ignoreCase: false, lit.WholeWord, ct);
             if (lit.IsAsciiPattern)
-                return SearchUtf8LiteralBytes(path, content, detected.Encoding, lit.AsciiLowerPatternBytes!, ignoreCase: true, lit.WholeWord, ct);
+                return SearchUtf8LiteralBytes(path, content, detected.Encoding, lit.AsciiLowerPatternBytes!, lit.PatternCharCount, ignoreCase: true, lit.WholeWord, ct);
             // else fall through: case-insensitive non-ASCII literal — needs Unicode-aware folding.
         }
 
@@ -197,6 +197,7 @@ public sealed class FileSearcher
         ReadOnlySpan<byte> content,
         Encoding encoding,
         byte[] patternBytes,
+        int patternCharCount,
         bool ignoreCase,
         bool wholeWord,
         CancellationToken ct)
@@ -275,7 +276,10 @@ public sealed class FileSearcher
             var charColumn = IsAllAscii(prefix) ? prefix.Length : encoding.GetCharCount(prefix);
 
             hits ??= new List<LineMatch>();
-            hits.Add(new LineMatch(lineNumber, charColumn, patternBytes.Length, lineText));
+            // Length is reported as a CHAR count: the UI's MatchText extracts the highlight via
+            // lineText.Substring(Column, Length), which is char-indexed. Using patternBytes.Length
+            // here would overshoot for non-ASCII patterns (e.g. "Größe" — 5 chars / 7 UTF-8 bytes).
+            hits.Add(new LineMatch(lineNumber, charColumn, patternCharCount, lineText));
 
             pos = hitEnd;
         }

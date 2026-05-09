@@ -28,6 +28,12 @@ internal sealed class LiteralMatcher : IMatcher
     /// position in valid UTF-8 content, making byte-level <c>IndexOf</c> correct for any pattern.</summary>
     internal byte[] Utf8PatternBytes => _utf8PatternBytes;
 
+    /// <summary>Char count of the pattern (NOT the byte count). The byte-fast-path needs this to
+    /// report <see cref="LineMatch.Length"/> in chars — consumers index into the decoded line text,
+    /// which is char-based, so handing them a UTF-8 byte count would overshoot the highlight on
+    /// non-ASCII patterns (e.g. <c>"Größe"</c> = 5 chars / 7 bytes).</summary>
+    internal int PatternCharCount => _pattern.Length;
+
     /// <summary>Pre-folded lowercase ASCII bytes — only populated when the pattern is pure ASCII and the matcher
     /// is case-insensitive. Lets the fast path do <c>IndexOfAny(lower, upper)</c> skip-scanning followed by
     /// case-insensitive byte comparison without going through char decoding.</summary>
