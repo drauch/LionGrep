@@ -55,6 +55,17 @@ public sealed class FileSearcher
                     return SearchWholeText(path, text, detected.Encoding, matcher, ct);
                 }
 
+                // Byte-level fast path for ASCII literals over UTF-8 content. ASCII bytes only ever appear
+                // as themselves in UTF-8 (never as a continuation byte), so we can scan the raw bytes with
+                // SIMD-vectorized IndexOf instead of decoding every line — a substantial win for the common
+                // case (short ASCII patterns like identifiers, file extensions, URLs).
+                if (detected.Encoding is UTF8Encoding
+                    && matcher is LiteralMatcher lit
+                    && lit.AsciiPatternBytes is { } asciiPattern)
+                {
+                    return SearchUtf8AsciiLiteral(path, content, detected.Encoding, asciiPattern, lit.CaseSensitive, lit.WholeWord, ct);
+                }
+
                 return detected.Encoding is UTF8Encoding
                     ? SearchUtf8(path, content, detected.Encoding, matcher, ct)
                     : SearchDecoded(path, content, detected.Encoding, matcher, ct);
@@ -95,11 +106,12 @@ public sealed class FileSearcher
                 if (lineBytes.Length > 0 && lineBytes[^1] == (byte)'\r')
                     lineBytes = lineBytes[..^1];
 
-                var charCount = encoding.GetCharCount(lineBytes);
-                if (charCount > buffer.Length)
+                // UTF-8 produces at most one char per byte, so lineBytes.Length is always a safe upper bound.
+                // Skipping GetCharCount avoids a second scan of the same line.
+                if (lineBytes.Length > buffer.Length)
                 {
                     ArrayPool<char>.Shared.Return(buffer);
-                    buffer = ArrayPool<char>.Shared.Rent(charCount);
+                    buffer = ArrayPool<char>.Shared.Rent(lineBytes.Length);
                 }
                 var written = encoding.GetChars(lineBytes, buffer);
                 var lineChars = buffer.AsSpan(0, written);
@@ -126,6 +138,137 @@ public sealed class FileSearcher
         }
 
         return hits is null ? null : new FileMatch(path, encoding, hits, []);
+    }
+
+    /// <summary>
+    /// SIMD-driven byte scan for pure-ASCII literal patterns over UTF-8 content. Skips per-line
+    /// decoding entirely; only matched lines are decoded for display. Honors case-insensitive ASCII
+    /// folding and whole-word boundaries (word chars are themselves ASCII, so a non-ASCII byte before/after
+    /// a match always counts as a non-word boundary).
+    /// </summary>
+    private static FileMatch? SearchUtf8AsciiLiteral(
+        string path,
+        ReadOnlySpan<byte> content,
+        Encoding encoding,
+        byte[] asciiPattern,
+        bool caseSensitive,
+        bool wholeWord,
+        CancellationToken ct)
+    {
+        if (asciiPattern.Length == 0) return null;
+
+        List<LineMatch>? hits = null;
+
+        // Maintain (lineNumber, lineStart) incrementally so each match doesn't re-walk from byte 0.
+        var lineStart = 0;
+        var lineNumber = 1;
+
+        var pos = 0;
+        while (pos <= content.Length - asciiPattern.Length)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            var hitOffset = caseSensitive
+                ? content[pos..].IndexOf(asciiPattern)
+                : IndexOfAsciiCaseInsensitive(content[pos..], asciiPattern);
+            if (hitOffset < 0) break;
+
+            var hitStart = pos + hitOffset;
+            var hitEnd = hitStart + asciiPattern.Length;
+
+            // Whole-word: bytes outside the match must not be ASCII word chars. Any byte >= 128 is part
+            // of a multi-byte UTF-8 sequence representing a non-ASCII char, which is never a word char
+            // under our ASCII-word-char definition, so it counts as a boundary.
+            if (wholeWord)
+            {
+                var leftOk = hitStart == 0 || !IsAsciiWordByte(content[hitStart - 1]);
+                var rightOk = hitEnd == content.Length || !IsAsciiWordByte(content[hitEnd]);
+                if (!(leftOk && rightOk))
+                {
+                    pos = hitStart + 1;
+                    continue;
+                }
+            }
+
+            // Advance the running line cursor up to the line containing this hit.
+            while (lineStart < hitStart)
+            {
+                var nl = content[lineStart..hitStart].IndexOf((byte)'\n');
+                if (nl < 0) break;
+                lineStart += nl + 1;
+                lineNumber++;
+            }
+
+            // End of the line containing the hit.
+            var afterMatch = hitEnd;
+            var nlIndex = content[afterMatch..].IndexOf((byte)'\n');
+            var lineEnd = nlIndex < 0 ? content.Length : afterMatch + nlIndex;
+            if (lineEnd > lineStart && content[lineEnd - 1] == (byte)'\r') lineEnd--;
+
+            var lineBytes = content[lineStart..lineEnd];
+            var lineText = encoding.GetString(lineBytes);
+
+            // The column reported to the UI is char-based, not byte-based. For the all-ASCII prefix case
+            // (very common in code), char count equals byte count and we skip the decode. Otherwise we
+            // count chars in the prefix slice once.
+            var prefix = content[lineStart..hitStart];
+            var charColumn = IsAllAscii(prefix) ? prefix.Length : encoding.GetCharCount(prefix);
+
+            hits ??= new List<LineMatch>();
+            hits.Add(new LineMatch(lineNumber, charColumn, asciiPattern.Length, lineText));
+
+            pos = hitEnd;
+        }
+
+        return hits is null ? null : new FileMatch(path, encoding, hits, []);
+    }
+
+    private static int IndexOfAsciiCaseInsensitive(ReadOnlySpan<byte> haystack, ReadOnlySpan<byte> needleLower)
+    {
+        // Pre-compute upper variants of pattern bytes that are ASCII letters (only those flip when folded).
+        var first = needleLower[0];
+        var firstUpper = (byte)(first is >= (byte)'a' and <= (byte)'z' ? first - 32 : first);
+
+        var pos = 0;
+        while (pos <= haystack.Length - needleLower.Length)
+        {
+            // SIMD-vectorized fast skip to the next byte that could begin the pattern.
+            int skip;
+            if (first == firstUpper)
+                skip = haystack[pos..].IndexOf(first);
+            else
+                skip = haystack[pos..].IndexOfAny(first, firstUpper);
+            if (skip < 0) return -1;
+
+            var candidate = pos + skip;
+            if (candidate + needleLower.Length > haystack.Length) return -1;
+
+            // Verify the rest of the pattern matches case-insensitively.
+            var ok = true;
+            for (var i = 0; i < needleLower.Length; i++)
+            {
+                var hb = haystack[candidate + i];
+                var hbLower = (byte)(hb is >= (byte)'A' and <= (byte)'Z' ? hb + 32 : hb);
+                if (hbLower != needleLower[i]) { ok = false; break; }
+            }
+            if (ok) return candidate;
+
+            pos = candidate + 1;
+        }
+        return -1;
+    }
+
+    private static bool IsAsciiWordByte(byte b) =>
+        (uint)(b - (byte)'0') <= 9 ||
+        (uint)((b | 0x20) - (byte)'a') <= 25 ||
+        b == (byte)'_';
+
+    private static bool IsAllAscii(ReadOnlySpan<byte> bytes)
+    {
+        // Vectorized scan for any byte >= 128. Returns true if none.
+        for (var i = 0; i < bytes.Length; i++)
+            if (bytes[i] >= 128) return false;
+        return true;
     }
 
     /// <summary>

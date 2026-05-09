@@ -5,12 +5,36 @@ internal sealed class LiteralMatcher : IMatcher
     private readonly string _pattern;
     private readonly StringComparison _comparison;
     private readonly bool _wholeWord;
+    private readonly byte[]? _asciiPatternBytes;
 
     public LiteralMatcher(string pattern, bool caseSensitive, bool wholeWord)
     {
         _pattern = pattern;
         _comparison = caseSensitive ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
         _wholeWord = wholeWord;
+        _asciiPatternBytes = TryBuildAsciiBytes(pattern, caseSensitive);
+    }
+
+    /// <summary>Pattern as bytes for byte-level scan over UTF-8 content, or null if the pattern isn't pure ASCII.
+    /// When the matcher is case-insensitive, bytes are pre-folded to lowercase so the fast path can compare against
+    /// each candidate byte's lowercase form.</summary>
+    internal byte[]? AsciiPatternBytes => _asciiPatternBytes;
+    internal bool CaseSensitive => _comparison == StringComparison.Ordinal;
+    internal bool WholeWord => _wholeWord;
+
+    private static byte[]? TryBuildAsciiBytes(string pattern, bool caseSensitive)
+    {
+        if (pattern.Length == 0) return null;
+        var bytes = new byte[pattern.Length];
+        for (var i = 0; i < pattern.Length; i++)
+        {
+            var c = pattern[i];
+            if (c >= 128) return null;
+            bytes[i] = caseSensitive
+                ? (byte)c
+                : (byte)(c is >= 'A' and <= 'Z' ? c + 32 : c);
+        }
+        return bytes;
     }
 
     public void FindMatches(ReadOnlySpan<char> line, ICollection<MatchSpan> destination)

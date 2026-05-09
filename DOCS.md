@@ -291,9 +291,16 @@ All settings persist under `HKCU\Software\Locate`.
 
 ## 12. Architecture notes (for the curious)
 
-- `Locate.Core` — the search/replace engine. Pure .NET, no UI deps. Memory-mapped I/O, SIMD-vectorized byte search via `IndexOf`, RFC-style BOM detection, ordinal/`OrdinalIgnoreCase` semantics. Tested with 100+ NUnit tests against real temp files (no mocks).
+- `Locate.Core` — the search/replace engine. Pure .NET, no UI deps. Memory-mapped I/O, SIMD-vectorized byte search via `IndexOf`, RFC-style BOM detection, ordinal/`OrdinalIgnoreCase` semantics. Tested with 120+ NUnit tests against real temp files (no mocks).
 - `Locate.App` — WinUI 3 shell, MVVM via `CommunityToolkit.Mvvm` source generators. Custom title bar, custom CheckBox template for compact density, `ColumnResizer` UserControl wrapping a `Thumb` (Thumb is sealed in WinUI 3, so we can't subclass it directly).
 - Persistence: registry under `HKCU\Software\Locate\…` (recents, settings, presets, last-form snapshot).
+
+### 12.1 Performance levers in the engine
+
+- **Per-file parallelism.** `Searcher.Search` dispatches files across `Environment.ProcessorCount` worker threads via `Parallel.ForEach`, with results streamed back through a bounded `BlockingCollection` so a slow consumer can't OOM the producer. On 8-core boxes this translates to ~Nx wall-clock speedup on warm caches; cancelling either side propagates to the other via a linked CTS, and consuming early (e.g. `.Take(10)`) cleanly stops the producer.
+- **Byte-level fast path for ASCII literals.** When the pattern is pure ASCII and the file is UTF-8, `FileSearcher` skips per-line decoding entirely and uses SIMD-vectorized `IndexOf`/`IndexOfAny` over the raw bytes. ASCII bytes can never appear as a UTF-8 continuation byte, so the byte search is correct. Only matched lines are decoded for display. Case-insensitive ASCII matches still hit this path (via a pre-folded pattern + `IndexOfAny(lower, upper)` skip-scan); whole-word boundaries are checked at byte level since word characters are themselves ASCII.
+- **Single decode pass per matched line.** UTF-8 emits at most one char per byte, so the decode buffer is sized from the byte length directly — no separate `GetCharCount` pass.
+- **Whole-file regex on demand.** `DotMatchesNewline` triggers a one-shot decode + whole-text regex run; line-by-line matching is preserved for the common (single-line) case where it's cheaper.
 
 ---
 

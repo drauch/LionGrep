@@ -226,6 +226,77 @@ public class SearcherTests
     }
 
     [Test]
+    public void AsciiFastPath_CaseInsensitive_FindsMixedCaseHits()
+    {
+        Touch("a.txt", "Hello WORLD\nhello world\nHELLO\n");
+
+        var results = _searcher.Search(new SearchRequest(
+            Roots: [_root],
+            Enumeration: new FileEnumerationOptions(),
+            Search: new SearchOptions { Pattern = "hello", CaseSensitive = false })).ToList();
+
+        Assert.That(results, Has.Count.EqualTo(1));
+        // 3 lines, each contains a hit, regardless of casing.
+        Assert.That(results[0].ContentMatches, Has.Count.EqualTo(3));
+    }
+
+    [Test]
+    public void AsciiFastPath_WholeWord_BoundariesRespected()
+    {
+        Touch("a.txt", "foo\nfoobar\nbar foo\nbarfoo\n");
+
+        var results = _searcher.Search(new SearchRequest(
+            Roots: [_root],
+            Enumeration: new FileEnumerationOptions(),
+            Search: new SearchOptions { Pattern = "foo", WholeWord = true, CaseSensitive = true })).ToList();
+
+        Assert.That(results, Has.Count.EqualTo(1));
+        // "foo" alone (line 1) and "bar foo" (line 3) match; "foobar" and "barfoo" are not whole words.
+        Assert.That(results[0].ContentMatches.Select(m => m.LineNumber), Is.EquivalentTo(new[] { 1, 3 }));
+    }
+
+    [Test]
+    public void AsciiFastPath_NonAsciiBeforeMatch_ColumnReportedInChars()
+    {
+        // German umlauts before the ASCII match — char column != byte column.
+        Touch("a.txt", "üöä foo bar\n");
+
+        var results = _searcher.Search(new SearchRequest(
+            Roots: [_root],
+            Enumeration: new FileEnumerationOptions(),
+            Search: new SearchOptions { Pattern = "foo", CaseSensitive = true })).ToList();
+
+        Assert.That(results, Has.Count.EqualTo(1));
+        var hit = results[0].ContentMatches[0];
+        // "üöä " is 4 chars but 7 UTF-8 bytes. Column must be the char index, not the byte offset.
+        Assert.That(hit.Column, Is.EqualTo(4));
+    }
+
+    [Test]
+    public void Parallel_AllMatchesYielded_NoDuplicates_NoDrops()
+    {
+        // Force enough files that the parallel scheduler will dispatch across multiple workers.
+        const int FileCount = 200;
+        var expected = new HashSet<string>();
+        for (var i = 0; i < FileCount; i++)
+        {
+            var path = Touch($"f{i:D3}.txt", $"line {i}\nneedle here {i}\nlast line {i}\n");
+            expected.Add(path);
+        }
+
+        var results = _searcher.Search(new SearchRequest(
+            Roots: [_root],
+            Enumeration: new FileEnumerationOptions(),
+            Search: new SearchOptions { Pattern = "needle" })).ToList();
+
+        // Every file should be matched exactly once.
+        var paths = results.Select(r => r.Path).ToList();
+        Assert.That(paths, Has.Count.EqualTo(FileCount));
+        Assert.That(paths.Distinct().Count(), Is.EqualTo(FileCount), "parallel pipeline must not duplicate.");
+        Assert.That(new HashSet<string>(paths), Is.EquivalentTo(expected), "parallel pipeline must not drop.");
+    }
+
+    [Test]
     public void SearchFiles_Invert_YieldsOnlyNonMatchingPathsFromInput()
     {
         var a = Touch("a.txt", "has needle\n");
