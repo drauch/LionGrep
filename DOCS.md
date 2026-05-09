@@ -109,7 +109,11 @@ The **Undo** button (next to **Replace…**) restores files from the most recent
 
 Undo is disabled until a successful **Replace with backups** has produced at least one backup. Files where the `.bak` is missing at undo time are reported as failed and skipped.
 
-### 4.3 Other behavior
+### 4.3 Cancellation and parallelism
+
+Replace runs across `Environment.ProcessorCount` worker threads (`Parallel.ForEachAsync`) — each file is independent (the engine reads, edits in memory or to a sibling temp, and renames atomically), so workers don't share buffers. While a replace is in flight the **Replace…** button is replaced by a **Cancel** button matching the Search/Cancel pair. Cancel is cooperative: files that have already been rewritten stay rewritten, but no further files are touched, and the status line reads `"Replace cancelled."` instead of an error message.
+
+### 4.4 Other behavior
 
 **Encoding round-trip:** Locate detects encoding via BOM (UTF-8/16 LE/16 BE/32 LE/32 BE). No BOM falls back to UTF-8. Replace writes back with the **same** encoding it detected, including the BOM if there was one.
 
@@ -350,6 +354,5 @@ See `Locate.Bench/README.md` for the available profiles, the patterns each bench
 
 - Search > 2 GiB — needs a streamed, chunked-with-overlap path.
 - Replace > 4 MiB — needs streamed temp-file rewrite.
-- Parallel `BatchReplacer` orchestrator (current implementation is sequential).
 - Global system-wide hotkeys for presets (in-app only today).
 - Live re-fit of the form/results splitter when WrapPanel content reflows on width change (form-fit only runs on first activation).

@@ -154,7 +154,10 @@ public partial class MainViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(SearchInFoundFilesCommand))]
     [NotifyCanExecuteChangedFor(nameof(ReplaceCommand))]
     [NotifyCanExecuteChangedFor(nameof(ReplaceWithBackupsCommand))]
+    [NotifyCanExecuteChangedFor(nameof(CancelReplaceCommand))]
     [NotifyCanExecuteChangedFor(nameof(UndoReplaceCommand))]
+    [NotifyPropertyChangedFor(nameof(ReplaceButtonVisibility))]
+    [NotifyPropertyChangedFor(nameof(CancelReplaceButtonVisibility))]
     private bool _isReplacing;
 
     [ObservableProperty] private bool _isReplaceEnabled;
@@ -222,6 +225,8 @@ public partial class MainViewModel : ObservableObject
 
     public Visibility SearchButtonVisibility => IsSearching ? Visibility.Collapsed : Visibility.Visible;
     public Visibility CancelButtonVisibility => IsSearching ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility ReplaceButtonVisibility => IsReplacing ? Visibility.Collapsed : Visibility.Visible;
+    public Visibility CancelReplaceButtonVisibility => IsReplacing ? Visibility.Visible : Visibility.Collapsed;
 
     /// <summary>The complete result set as the search engine yielded it (sort order preserved).</summary>
     public ObservableCollection<FileMatchViewModel> Results { get; } = [];
@@ -604,11 +609,17 @@ public partial class MainViewModel : ObservableObject
     private void CancelSearch() => _searchCts?.Cancel();
     private bool CanCancel() => IsSearching;
 
+    private CancellationTokenSource? _replaceCts;
+
     [RelayCommand(CanExecute = nameof(CanReplace))]
     private Task ReplaceAsync() => DoReplaceAsync(withBackups: false);
 
     [RelayCommand(CanExecute = nameof(CanReplace))]
     private Task ReplaceWithBackupsAsync() => DoReplaceAsync(withBackups: true);
+
+    [RelayCommand(CanExecute = nameof(CanCancelReplace))]
+    private void CancelReplace() => _replaceCts?.Cancel();
+    private bool CanCancelReplace() => IsReplacing;
 
     private async Task DoReplaceAsync(bool withBackups)
     {
@@ -625,6 +636,8 @@ public partial class MainViewModel : ObservableObject
 
         OperationStarted?.Invoke(this, EventArgs.Empty);
         IsReplacing = true;
+        _replaceCts = new CancellationTokenSource();
+        var ct = _replaceCts.Token;
         try
         {
             var ctx = new ReplacementContext(
@@ -634,31 +647,39 @@ public partial class MainViewModel : ObservableObject
                 KeepFileDate: KeepFileDate,
                 CreateBackup: withBackups);
 
-            var totalReplacements = 0;
-            var filesChanged = 0;
+            // Atomic counters because Parallel.ForEachAsync workers race to update them.
+            long totalReplacements = 0;
+            long filesChanged = 0;
             // Replace only the visible (filtered) set so an active filter narrows what gets rewritten.
             var paths = FilteredResults.Select(r => r.Path).ToList();
-            var newBackups = new List<(string, string, DateTime)>();
-            await Task.Run(() =>
-            {
-                foreach (var path in paths)
+            var newBackups = new System.Collections.Concurrent.ConcurrentBag<(string, string, DateTime)>();
+
+            // Parallel orchestration — H3. Each file is independent: the engine reads, edits in
+            // memory or to a sibling temp, and renames atomically. Workers don't share buffers.
+            await Parallel.ForEachAsync(
+                paths,
+                new ParallelOptions { CancellationToken = ct, MaxDegreeOfParallelism = Environment.ProcessorCount },
+                async (path, token) =>
                 {
+                    token.ThrowIfCancellationRequested();
                     try
                     {
-                        var result = _fileReplacer.Replace(path, ctx);
+                        var result = _fileReplacer.Replace(path, ctx, token);
                         if (result.ReplacementCount > 0)
                         {
-                            filesChanged++;
-                            totalReplacements += result.ReplacementCount;
+                            Interlocked.Add(ref totalReplacements, result.ReplacementCount);
+                            Interlocked.Increment(ref filesChanged);
                             if (result.BackupPath is not null && File.Exists(result.BackupPath))
                                 newBackups.Add((path, result.BackupPath, File.GetLastWriteTimeUtc(result.BackupPath)));
                         }
                     }
+                    catch (OperationCanceledException) { throw; /* let cancellation surface */ }
                     catch (NotSupportedException) { /* file too large; skip */ }
                     catch (IOException) { /* in use; skip */ }
                     catch (UnauthorizedAccessException) { /* skip */ }
-                }
-            });
+                    await Task.CompletedTask;
+                });
+
             _recents.Add(RecentsKeyReplacePattern, ReplacePattern);
 
             if (withBackups)
@@ -675,12 +696,19 @@ public partial class MainViewModel : ObservableObject
                 : "";
             SetSummary($"Replaced {totalReplacements:N0} matches in {filesChanged:N0} files{suffix}.");
         }
+        catch (OperationCanceledException)
+        {
+            // R10 — clean cancellation message instead of "Replace error: …".
+            SetSummary("Replace cancelled.");
+        }
         catch (Exception ex)
         {
             SetSummary($"Replace error: {ex.Message}");
         }
         finally
         {
+            _replaceCts?.Dispose();
+            _replaceCts = null;
             IsReplacing = false;
         }
     }
