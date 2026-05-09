@@ -4,6 +4,8 @@ Locate is a UI-driven grep-like search & replace tool for Windows, built on .NET
 
 This document is the canonical user manual. It describes every visible feature and every non-obvious behavior (especially "what counts as skipped"). It is updated in lock-step with the code.
 
+For a short overview, see [README.md](README.md). For architecture, build instructions, and contributor info, see [DEVELOPMENT.md](DEVELOPMENT.md).
+
 ---
 
 ## 1. Quick start
@@ -181,6 +183,28 @@ If **Search for** is empty *and* **Search in file & sub directory names** is on,
 
 Streamed search and replace for arbitrary file sizes is a v1.1 item.
 
+### 6.4 What counts as "binary"
+
+The **Skip binary files** toggle decides per-file via a heuristic on the first 8 KiB:
+
+- A BOM (UTF-8 / UTF-16 LE / UTF-16 BE / UTF-32 LE / UTF-32 BE) → always treated as text. Never skipped, even if the rest of the file looks unusual.
+- Otherwise: the presence of any NUL byte (`0x00`) in the first 8 KiB → treated as binary and skipped (counted in Skipped).
+- No BOM and no NUL bytes in the first 8 KiB → treated as text (UTF-8). The rest of the file isn't pre-scanned; later NULs are tolerated.
+
+The 8 KiB window is fixed. Files smaller than 8 KiB are scanned end-to-end. This matches the grep-family heuristic and is dramatically cheaper than full content sniffing.
+
+### 6.5 What "Inverse search" does (precisely)
+
+**Inverse search** runs the same enumeration + filter pipeline as a normal search, but inverts the per-file match decision:
+
+- A file is yielded only if it would **not** match in a normal search.
+- Files filtered out earlier (by File names, Exclude paths, Size, Date, attributes, > 2 GiB) are not yielded — they were never candidates.
+- Files skipped by **Skip binary files** are **not** yielded either. They're "unknown", not "no match"; we never opened them, so we can't claim they don't match.
+- Inverse rows have no line matches and aren't expandable.
+- The status line reads `N files (S files searched, K skipped)` — the "matches" count is omitted because there's no per-line match to count.
+
+Combine with **Search in currently found files** to do "find files containing X but not Y" in two passes.
+
 ---
 
 ## 7. Results table
@@ -302,57 +326,3 @@ All settings persist under `HKCU\Software\Locate` by default. To run a sandboxed
 | **Double-click on result row** | Open file in editor (multi-select prompts a confirmation first) |
 | **Right-click on result row** | If nothing is selected, selects the right-clicked row before opening the menu; existing multi-select is preserved |
 | **Open with editor / Open containing folder** | Always confirms when more than one file is selected (no Explorer-spam from a stray multi-select) |
-
----
-
-## 12. Architecture notes (for the curious)
-
-- `Locate.Core` — the search/replace engine **plus** view-logic helpers (`Locate.Core.Logic`). Pure .NET, no UI deps. Memory-mapped I/O, SIMD-vectorized byte search via `IndexOf`, RFC-style BOM detection, ordinal/`OrdinalIgnoreCase` semantics. Engine + logic tested with 200+ NUnit tests against real temp files (no mocks).
-- `Locate.Core.Logic` — code that used to live in the WinUI code-behind: `HotkeyParser`, `ResponsiveLayout` (column-width breakpoints), `SortDirectionLogic` (None → Asc → Desc cycle + arrow rendering), `CsvBuilder`. Each is a pure function with WinUI-free inputs and outputs, and each is unit-tested. The window code-behind translates between these helpers and the WinUI types.
-- `Locate.App` — WinUI 3 shell, MVVM via `CommunityToolkit.Mvvm` source generators. Custom title bar, custom CheckBox template for compact density, `ColumnResizer` UserControl wrapping a `Thumb` (Thumb is sealed in WinUI 3, so we can't subclass it directly).
-- Persistence: registry under `HKCU\Software\Locate\…` (recents, settings, presets, last-form snapshot).
-
-### Testing strategy
-
-- **Unit tests** (`Locate.Core.Tests`, NUnit) — the search engine, the view-logic helpers (`HotkeyParser`, `ResponsiveLayout`, `SortDirectionLogic`, `CsvBuilder`), and `RegexLiteralExtractor`. ~200 tests, run in milliseconds, no UI thread.
-- **The XAML files** (`MainWindow.xaml`, `SettingsWindow.xaml`, `AboutDialog.xaml`) are intentionally **not** unit-tested — they're declarative bindings to ObservableProperties and event handler names. The handlers in code-behind have been kept thin: each one parses the routed-event args and immediately delegates to a testable helper. Anything richer than that has been extracted into `Locate.Core.Logic`.
-- **End-to-end UI smoke tests** live in `Locate.UI.Tests/` — NUnit fixtures driving the real WinUI window via FlaUI 5 / UI Automation. They run sequentially against a single live process (`MaxCpuCount=1` in `Locate.UI.Tests.runsettings`), use a deterministic synthetic corpus from `CorpusBuilder`, and isolate themselves from the developer's settings via `--alternate-registry-key Software\LocateUITests\<guid>` (sandbox subkey wiped at fixture teardown). See `Locate.UI.Tests/README.md` for the coverage matrix and prerequisites (interactive desktop session, pre-built x64 `Locate.exe`).
-
-  The suite is **slow on purpose** — it's the pre-release smoke gate, not the inner loop. Run the fast NUnit `Locate.Core.Tests` for everyday work; run `Locate.UI.Tests` once before you tag a release.
-
-### 12.1 Performance levers in the engine
-
-- **Per-file parallelism.** `Searcher.Search` dispatches files across `Environment.ProcessorCount` worker threads via `Parallel.ForEach`, with results streamed back through a bounded `BlockingCollection` so a slow consumer can't OOM the producer. On 8-core boxes this translates to ~Nx wall-clock speedup on warm caches; cancelling either side propagates to the other via a linked CTS, and consuming early (e.g. `.Take(10)`) cleanly stops the producer.
-- **Byte-level fast path for literal patterns over UTF-8.** UTF-8 is self-synchronizing — a multi-byte character's bytes never appear at any other character's position — so byte-level `IndexOf` is correct for **any** case-sensitive pattern, not just ASCII. `FileSearcher` skips per-line decoding entirely and uses SIMD-vectorized `IndexOf`/`IndexOfAny` over the raw bytes. Only matched lines are decoded for display. Case-insensitive matches still hit the path when the pattern is ASCII (via pre-folded bytes + `IndexOfAny(lower, upper)` skip-scan); whole-word boundaries are checked at byte level since word characters are themselves ASCII (any byte ≥ 128 is part of a non-ASCII char and therefore a non-word boundary).
-- **Regex literal pre-filter.** `RegexLiteralExtractor` walks the regex pattern statically and finds the longest contiguous required-literal substring (e.g. `class\s+(\w+)` ⇒ `class`). Each file is first byte-scanned for that literal; if it's not present, the regex engine never runs on that file. Conservative on ambiguity (returns no literal rather than risk missing a match). This is the single most impactful regex optimization in real-world workloads — modeled after ripgrep's required-literal extraction.
-- **Small-file shortcut.** Files smaller than 64 KB skip mmap and use `File.ReadAllBytes` instead. Mmap setup cost (Section object + view mapping + `AcquirePointer`/`ReleasePointer`) dominates at small sizes; on NTFS + SSD a buffered read is strictly faster.
-- **Single decode pass per matched line.** UTF-8 emits at most one char per byte, so the decode buffer is sized from the byte length directly — no separate `GetCharCount` pass.
-- **Whole-file regex on demand.** `DotMatchesNewline` triggers a one-shot decode + whole-text regex run; line-by-line matching is preserved for the common (single-line) case where it's cheaper.
-- **Line-text reuse for dense matches.** When N hits land on the same line (e.g. `the` in English prose), the byte-fast-path decodes the line text once and shares the string across all `LineMatch` records on that line.
-- **`Ascii.IsValid` for the all-ASCII checks.** SIMD-vectorized in the BCL since .NET 8; we don't roll our own loop.
-
-### 12.2 Benchmarking
-
-`Locate.Bench/` is a separate console project with a BenchmarkDotNet suite plus a deterministic synthetic-corpus generator. The generator caches by `(profile, seed)` so repeated runs hit the exact same files on disk — which is also what makes ripgrep-comparable measurements possible:
-
-```pwsh
-# Build (or reuse) the corpus, get its absolute path on stdout
-$corpus = (dotnet run --project Locate.Bench -c Release -- prepare code).Trim()
-
-# Time ripgrep on it
-Measure-Command { rg --no-stats -c blazingNeedle $corpus | Out-Null }
-
-# Run our benchmark suite — the LiteralCaseSensitive case targets the same workload
-dotnet run --project Locate.Bench -c Release -- --filter '*LiteralCaseSensitive*'
-```
-
-See `Locate.Bench/README.md` for the available profiles, the patterns each benchmark exercises, and tips for fair comparisons (matching OS page-cache state, etc.).
-
----
-
-## 13. Known gaps (v1.1 candidates)
-
-- Search > 2 GiB — needs a streamed, chunked-with-overlap path.
-- Replace > 4 MiB — needs streamed temp-file rewrite.
-- Global system-wide hotkeys for presets (in-app only today).
-- Live re-fit of the form/results splitter when WrapPanel content reflows on width change (form-fit only runs on first activation).
