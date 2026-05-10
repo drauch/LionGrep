@@ -29,6 +29,12 @@
     <!-- Analyzers (Roslyn diagnostics, no runtime impact) -->
     <PackageVersion Include="IDisposableAnalyzers" Version="4.0.8" />
     <PackageVersion Include="Lindhart.Analyser.MissingAwaitWarning" Version="3.1.0-beta" />
+    <PackageVersion Include="Microsoft.VisualStudio.Threading.Analyzers" Version="17.14.15" />
+    <PackageVersion Include="Meziantou.Analyzer" Version="3.0.77" />
+    <PackageVersion Include="AsyncFixer" Version="2.1.0" />
+    <PackageVersion Include="Microsoft.CodeAnalysis.NetAnalyzers" Version="10.0.203" />
+    <PackageVersion Include="Roslynator.Analyzers" Version="4.15.0" />
+    <PackageVersion Include="SonarAnalyzer.CSharp" Version="10.25.0.139117" />
   </ItemGroup>
 
 </Project>

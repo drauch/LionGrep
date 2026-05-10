@@ -1,10 +1,34 @@
 <Project>
 
   <!-- Analyzers applied across every project in the solution. PrivateAssets="all" keeps them
-       confined to the build graph so consumers don't pull them transitively. -->
-  <ItemGroup>
+       confined to the build graph so consumers don't pull them transitively.
+
+       Each analyzer is gated on a per-name MSBuild property so build-cost measurements can
+       toggle one at a time via /p:EnableXxx=false. Default state is ALL ON. -->
+
+  <ItemGroup Condition="'$(EnableIDisposableAnalyzers)' != 'false'">
     <PackageReference Include="IDisposableAnalyzers" PrivateAssets="all" IncludeAssets="runtime; build; native; contentfiles; analyzers; buildtransitive" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(EnableLindhartMissingAwait)' != 'false'">
     <PackageReference Include="Lindhart.Analyser.MissingAwaitWarning" PrivateAssets="all" IncludeAssets="runtime; build; native; contentfiles; analyzers; buildtransitive" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(EnableThreadingAnalyzers)' != 'false'">
+    <PackageReference Include="Microsoft.VisualStudio.Threading.Analyzers" PrivateAssets="all" IncludeAssets="runtime; build; native; contentfiles; analyzers; buildtransitive" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(EnableMeziantouAnalyzer)' != 'false'">
+    <PackageReference Include="Meziantou.Analyzer" PrivateAssets="all" IncludeAssets="runtime; build; native; contentfiles; analyzers; buildtransitive" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(EnableAsyncFixer)' != 'false'">
+    <PackageReference Include="AsyncFixer" PrivateAssets="all" IncludeAssets="runtime; build; native; contentfiles; analyzers; buildtransitive" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(EnableNetAnalyzers)' != 'false'">
+    <PackageReference Include="Microsoft.CodeAnalysis.NetAnalyzers" PrivateAssets="all" IncludeAssets="runtime; build; native; contentfiles; analyzers; buildtransitive" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(EnableRoslynator)' != 'false'">
+    <PackageReference Include="Roslynator.Analyzers" PrivateAssets="all" IncludeAssets="runtime; build; native; contentfiles; analyzers; buildtransitive" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(EnableSonarAnalyzer)' != 'false'">
+    <PackageReference Include="SonarAnalyzer.CSharp" PrivateAssets="all" IncludeAssets="runtime; build; native; contentfiles; analyzers; buildtransitive" />
   </ItemGroup>
 
 </Project>
