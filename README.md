@@ -68,8 +68,6 @@ See [DEVELOPMENT.md](DEVELOPMENT.md) for everything else.
 
 ---
 
-## Developer & License
-
-Developed by **Dominik Rauch** (<dominik.rauch@signpath.io>).
+## License
 
 Licensed under the **GNU Affero General Public License v3.0** — see [LICENSE.md](LICENSE.md).
