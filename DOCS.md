@@ -95,6 +95,8 @@ Click the chevron on the **Search** split button:
 
 Replace rewrites every matched file on disk. Atomic via temp-file + `File.Replace`, so a failure can't corrupt the original. Files of any size are supported for the line-by-line case (the engine streams them through a sibling temp file and renames at the end). The only remaining cap is on **regex replace with `Dot matches newline`**: that mode requires the entire file in one `string`, so it's capped at **256 MiB**; larger files throw `NotSupportedException` and are skipped.
 
+**You don't need to click Search first.** If you click **Replace…** (or press **Ctrl+Alt+Enter**) with no current results, Locate runs the search implicitly and the confirmation dialog opens with the file count it found. If the implicit search yields nothing, the status line says so and no files are touched. With results already visible, Replace acts on those — exactly the same as if you'd clicked it manually.
+
 ### 4.1 Confirmation dialog (3-way)
 
 Clicking the **Replace…** button always opens a confirmation dialog with three options:
@@ -328,7 +330,7 @@ All settings persist under `HKCU\Software\Locate` by default. To run a sandboxed
 | Hotkey | Action |
 |---|---|
 | **Ctrl+Enter** | Run search (works even when focus is in a multi-line input) |
-| **Ctrl+Alt+Enter** | Replace **immediately** — bypasses the 3-way confirmation dialog. No backup is created. |
+| **Ctrl+Alt+Enter** | Replace **immediately** — bypasses the 3-way confirmation dialog. No backup is created. If no current results, runs the search first. |
 | **Escape** | Layered: first press closes the filter panel if it's open (and clears the filter); next press cancels a running search and restores the form panel. Idempotent on subsequent presses — the form returns to the same cached natural height each time. |
 | **Enter** | Default action for the focused control (newline in multi-line Search-in, etc.) |
 | **F2** etc. | Whatever you've assigned to a preset |

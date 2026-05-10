@@ -42,11 +42,10 @@ public partial class MainViewModel : ObservableObject
         Results.CollectionChanged += OnResultsCollectionChanged;
         FilteredResults.CollectionChanged += (_, _) =>
         {
-            // The filter shrinking the visible set should disable Replace / Search-in-found and update the status text.
-            RecomputeReplaceEnabled();
+            // Search-in-currently-found-files is the only command whose enable depends on having
+            // visible rows — Replace is now form-driven and runs an implicit search if the result
+            // set is empty (see ConfirmAndReplaceAsync in MainWindow.xaml.cs).
             SearchInFoundFilesCommand.NotifyCanExecuteChanged();
-            ReplaceCommand.NotifyCanExecuteChanged();
-            ReplaceWithBackupsCommand.NotifyCanExecuteChanged();
             OnPropertyChanged(nameof(FilterStatusText));
         };
         ReloadPresets();
@@ -146,6 +145,7 @@ public partial class MainViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(UndoReplaceCommand))]
     [NotifyPropertyChangedFor(nameof(SearchButtonVisibility))]
     [NotifyPropertyChangedFor(nameof(CancelButtonVisibility))]
+    [NotifyPropertyChangedFor(nameof(IsReplaceEnabled))]
     private bool _isSearching;
 
     [ObservableProperty]
@@ -158,9 +158,14 @@ public partial class MainViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(UndoReplaceCommand))]
     [NotifyPropertyChangedFor(nameof(ReplaceButtonVisibility))]
     [NotifyPropertyChangedFor(nameof(CancelReplaceButtonVisibility))]
+    [NotifyPropertyChangedFor(nameof(IsReplaceEnabled))]
     private bool _isReplacing;
 
-    [ObservableProperty] private bool _isReplaceEnabled;
+    /// <summary>The Replace button is enabled whenever the form is valid and we're not in the
+    /// middle of a search or another replace. Crucially it does <b>not</b> require a prior search
+    /// — clicking Replace with no current results runs the search implicitly first (see
+    /// <c>ConfirmAndReplaceAsync</c> in the code-behind).</summary>
+    public bool IsReplaceEnabled => !IsSearching && !IsReplacing && IsFormValid;
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(UndoReplaceCommand))]
@@ -172,6 +177,7 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(SearchInBorderBrush))]
     [NotifyPropertyChangedFor(nameof(IsFormValid))]
+    [NotifyPropertyChangedFor(nameof(IsReplaceEnabled))]
     [NotifyCanExecuteChangedFor(nameof(SearchCommand))]
     [NotifyCanExecuteChangedFor(nameof(InverseSearchCommand))]
     [NotifyCanExecuteChangedFor(nameof(ReplaceCommand))]
@@ -181,6 +187,7 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(SearchPatternBorderBrush))]
     [NotifyPropertyChangedFor(nameof(IsFormValid))]
+    [NotifyPropertyChangedFor(nameof(IsReplaceEnabled))]
     [NotifyCanExecuteChangedFor(nameof(SearchCommand))]
     [NotifyCanExecuteChangedFor(nameof(InverseSearchCommand))]
     [NotifyCanExecuteChangedFor(nameof(ReplaceCommand))]
@@ -190,6 +197,7 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(FileNamesBorderBrush))]
     [NotifyPropertyChangedFor(nameof(IsFormValid))]
+    [NotifyPropertyChangedFor(nameof(IsReplaceEnabled))]
     [NotifyCanExecuteChangedFor(nameof(SearchCommand))]
     [NotifyCanExecuteChangedFor(nameof(InverseSearchCommand))]
     [NotifyCanExecuteChangedFor(nameof(ReplaceCommand))]
@@ -199,6 +207,7 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ExcludePathsBorderBrush))]
     [NotifyPropertyChangedFor(nameof(IsFormValid))]
+    [NotifyPropertyChangedFor(nameof(IsReplaceEnabled))]
     [NotifyCanExecuteChangedFor(nameof(SearchCommand))]
     [NotifyCanExecuteChangedFor(nameof(InverseSearchCommand))]
     [NotifyCanExecuteChangedFor(nameof(ReplaceCommand))]
@@ -217,11 +226,6 @@ public partial class MainViewModel : ObservableObject
     public Microsoft.UI.Xaml.Media.Brush? ExcludePathsBorderBrush => IsExcludePathsValid ? null : InvalidInputBrush;
 
     private readonly List<(string Path, string BackupPath, DateTime BackupMtimeUtc)> _lastBackups = [];
-
-    partial void OnIsSearchingChanged(bool value) => RecomputeReplaceEnabled();
-    partial void OnIsReplacingChanged(bool value) => RecomputeReplaceEnabled();
-    private void RecomputeReplaceEnabled() =>
-        IsReplaceEnabled = !IsSearching && !IsReplacing && FilteredResults.Count > 0;
 
     public Visibility SearchButtonVisibility => IsSearching ? Visibility.Collapsed : Visibility.Visible;
     public Visibility CancelButtonVisibility => IsSearching ? Visibility.Visible : Visibility.Collapsed;
@@ -729,7 +733,11 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
-    private bool CanReplace() => !IsSearching && !IsReplacing && FilteredResults.Count > 0 && IsFormValid;
+    // Replace no longer requires a prior search — when invoked with no current results, the
+    // confirmation flow in ConfirmAndReplaceAsync runs the search implicitly first. Keeping
+    // CanReplace gated only on form validity + not-currently-busy makes the button behave
+    // intuitively: if the form is fillable, Replace is reachable.
+    private bool CanReplace() => !IsSearching && !IsReplacing && IsFormValid;
 
     [RelayCommand(CanExecute = nameof(CanUndoReplace))]
     private async Task UndoReplaceAsync()

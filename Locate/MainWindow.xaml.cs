@@ -881,12 +881,14 @@ public sealed partial class MainWindow : Window
             ViewModel.SearchCommand.Execute(null);
     }
 
-    private void OnCtrlAltEnterAccelerator(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    private async void OnCtrlAltEnterAccelerator(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
     {
         args.Handled = true;
         // Ctrl+Alt+Enter bypasses the 3-way confirmation dialog and replaces immediately (no .bak).
-        if (ViewModel.ReplaceCommand.CanExecute(null))
-            ViewModel.ReplaceCommand.Execute(null);
+        // Like the Replace button, it runs an implicit search first if there are no current results.
+        if (!ViewModel.IsReplaceEnabled) return;
+        if (!await EnsureResultsAsync()) return;
+        await ViewModel.ReplaceCommand.ExecuteAsync(null);
     }
 
     private void OnEscapeAccelerator(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
@@ -927,6 +929,11 @@ public sealed partial class MainWindow : Window
     {
         if (!ViewModel.IsReplaceEnabled) return;
 
+        // Implicit search: if there's no current result set, run the search first so the
+        // confirmation dialog can show the file count. The user no longer has to click Search
+        // before clicking Replace — the form alone is enough.
+        if (!await EnsureResultsAsync()) return;
+
         // "Don't warn when replacing" in Settings makes the Replace button behave like Ctrl+Alt+Enter:
         // immediate replace, no backup, no dialog.
         if (_settingsStore.Load().DontWarnWhenReplacing)
@@ -955,6 +962,19 @@ public sealed partial class MainWindow : Window
         else if (result == ContentDialogResult.Secondary)
             await ViewModel.ReplaceCommand.ExecuteAsync(null);
         // Close (Cancel) → do nothing.
+    }
+
+    /// <summary>If <see cref="MainViewModel.FilteredResults"/> is empty, runs a search and awaits
+    /// its completion. Returns <c>true</c> when there is at least one row to act on, <c>false</c>
+    /// when no matches were found (in which case the engine's summary text already explains why,
+    /// so the caller can simply bail).</summary>
+    private async Task<bool> EnsureResultsAsync()
+    {
+        if (ViewModel.FilteredResults.Count > 0) return true;
+        if (!ViewModel.SearchCommand.CanExecute(null)) return false;
+
+        await ViewModel.SearchCommand.ExecuteAsync(null);
+        return ViewModel.FilteredResults.Count > 0;
     }
 
     // ---- Column sort ----
