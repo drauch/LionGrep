@@ -221,7 +221,9 @@ public sealed class LineMatchViewModel : ObservableObject
             }
 
             var segments = HighlightSegmenter.Build(LineText, engineRanges, _parent.FilterText);
+#pragma warning disable S2365 // Property by design: XAML x:Bind only wires OneWay updates onto properties, not methods.
             return segments.Select(s => new TextSegment(s.Text, s.Kind)).ToArray();
+#pragma warning restore S2365
         }
     }
 

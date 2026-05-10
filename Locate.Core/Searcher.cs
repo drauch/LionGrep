@@ -202,7 +202,9 @@ public sealed class Searcher
     {
         try
         {
+#pragma warning disable VSTHRD002 // Synchronous wait is intentional: caller is the consumer in DrainQueue's `finally` after the iterator exits; we have no async boundary to await on, and the producer is already complete or cancelled by this point.
             producer.Wait();
+#pragma warning restore VSTHRD002
         }
         catch (AggregateException ag)
             when (ag.Flatten().InnerExceptions.All(e => e is OperationCanceledException))
@@ -250,7 +252,7 @@ public sealed class Searcher
             }
             catch (NotSupportedException) { /* > 2 GiB; skipped for v1. */ }
             catch (IOException) { /* file in use, locked, etc. */ }
-            catch (UnauthorizedAccessException) { }
+            catch (UnauthorizedAccessException) { /* deny — user can't read this file, treat as a non-match. */ }
         }
 
         FileMatch? toYield;

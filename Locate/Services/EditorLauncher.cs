@@ -27,12 +27,14 @@ public sealed class EditorLauncher
 
         try
         {
+#pragma warning disable IDISP004 // Fire-and-forget editor launch — the Process handle isn't useful to us.
             Process.Start(new ProcessStartInfo
             {
                 FileName = exe,
                 Arguments = args,
                 UseShellExecute = false,
             });
+#pragma warning restore IDISP004
             return true;
         }
         catch (Exception ex)

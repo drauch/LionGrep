@@ -396,7 +396,8 @@ public class SearcherTests
             foreach (var _ in throwingSearcher.Search(new SearchRequest(
                 Roots: [_root],
                 Enumeration: new FileEnumerationOptions(),
-                Search: new SearchOptions { Pattern = "anything" }))) { }
+                Search: new SearchOptions { Pattern = "anything" })))
+            { /* drain to surface the throwing matcher's exception */ }
         });
     }
 

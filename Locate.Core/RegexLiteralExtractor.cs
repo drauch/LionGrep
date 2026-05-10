@@ -294,19 +294,33 @@ internal static class RegexLiteralExtractor
     {
         var groupDepth = 0;
         var inClass = false;
+#pragma warning disable S127 // Intentional: skipping the char after a backslash escape advances the loop variable.
         for (var i = 0; i < pattern.Length; i++)
         {
             var c = pattern[i];
-            if (c == '\\' && i + 1 < pattern.Length) { i++; continue; }
-            if (inClass) { if (c == ']') inClass = false; continue; }
+            if (c == '\\' && i + 1 < pattern.Length)
+            {
+                i++;
+                continue;
+            }
+            if (inClass)
+            {
+                if (c == ']') inClass = false;
+                continue;
+            }
             switch (c)
             {
                 case '[': inClass = true; break;
                 case '(': groupDepth++; break;
-                case ')': if (groupDepth > 0) groupDepth--; break;
-                case '|': if (groupDepth == 0) return true; break;
+                case ')':
+                    if (groupDepth > 0) groupDepth--;
+                    break;
+                case '|':
+                    if (groupDepth == 0) return true;
+                    break;
             }
         }
+#pragma warning restore S127
         return false;
     }
 }

@@ -19,7 +19,9 @@ public sealed class FileReplacer
     /// would otherwise force unbounded buffer growth.</summary>
     private const int MaxStreamingLineChars = 32 * 1024 * 1024;
 
+#pragma warning disable S2325 // Instance method by API design — callers and tests rely on `new FileReplacer().Replace(...)`.
     public ReplaceResult Replace(string path, ReplacementContext context, CancellationToken ct = default)
+#pragma warning restore S2325
     {
         ArgumentException.ThrowIfNullOrEmpty(path);
         ArgumentNullException.ThrowIfNull(context);
@@ -160,7 +162,7 @@ public sealed class FileReplacer
         }
         catch
         {
-            try { File.Delete(tempPath); } catch { }
+            try { File.Delete(tempPath); } catch (IOException) { /* best-effort cleanup; the original file is still intact */ }
             throw;
         }
     }
@@ -327,7 +329,7 @@ public sealed class FileReplacer
         }
         catch
         {
-            try { File.Delete(temp); } catch { }
+            try { File.Delete(temp); } catch (IOException) { /* best-effort cleanup; the original file is still intact */ }
             throw;
         }
 

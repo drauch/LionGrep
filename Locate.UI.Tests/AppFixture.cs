@@ -51,9 +51,13 @@ public sealed class AppFixture
     [OneTimeTearDown]
     public void TearDown()
     {
-        try { App.Close(); App.WaitWhileMainHandleIsMissing(TimeSpan.FromSeconds(5)); } catch { /* swallow */ }
-        try { App.Dispose(); } catch { }
-        try { Automation.Dispose(); } catch { }
+        // Catching System.Exception is intentional: teardown must succeed even if FlaUI throws
+        // anything from a half-collapsed UIA tree or an already-dead test process.
+#pragma warning disable RCS1075, IDISP007
+        try { App.Close(); App.WaitWhileMainHandleIsMissing(TimeSpan.FromSeconds(5)); } catch (Exception) { /* ignore */ }
+        try { App.Dispose(); } catch (Exception) { /* ignore */ }
+        try { Automation.Dispose(); } catch (Exception) { /* ignore */ }
+#pragma warning restore RCS1075, IDISP007
 
         // Wipe the sandbox subkey so artefacts of this run don't accumulate. Best-effort —
         // if the dev wants to inspect it post-mortem, they can re-run with a debugger and

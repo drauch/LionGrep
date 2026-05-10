@@ -29,13 +29,9 @@ public class ResultsToolbarTests
         _driver.ButtonByContent("Expand all").Invoke();
         Thread.Sleep(500);
 
-        // After expand: visible TextBlocks for matched lines should appear in the tree. We don't
-        // assert exact counts (template realization is virtualized), but at least one matched-line
-        // text fragment should be reachable.
-        var anyLineText = AppFixture.MainWindow.FindFirstDescendant(
-            AppFixture.Automation.ConditionFactory.ByControlType(ControlType.Text)
-                .And(AppFixture.Automation.ConditionFactory.ByName(new System.Text.RegularExpressions.Regex(".*MAGIC_TOKEN.*").ToString())));
-        // Falling back to a coarser check — just confirm the Collapse all button works without error.
+        // After expand: visible TextBlocks for matched lines should appear in the tree, but template
+        // realization is virtualized — exact counts aren't reliable. Coarser check: just confirm the
+        // Collapse all button works without error.
         _driver.ButtonByContent("Collapse all").Invoke();
         Thread.Sleep(300);
 

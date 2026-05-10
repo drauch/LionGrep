@@ -18,7 +18,6 @@ public partial class MainViewModel : ObservableObject
     public const string RecentsKeyFileNames = "FileNames";
     public const string RecentsKeyExcludePaths = "ExcludePaths";
 
-    private readonly DispatcherQueue _dispatcher;
     private readonly Searcher _searcher = new();
     private readonly FileReplacer _fileReplacer = new();
     private readonly RecentsStore _recents;
@@ -35,7 +34,10 @@ public partial class MainViewModel : ObservableObject
 
     public MainViewModel(DispatcherQueue dispatcher, RecentsStore recents, SettingsStore settingsStore, PresetsStore presetsStore)
     {
-        _dispatcher = dispatcher;
+        // dispatcher kept in the signature for API compatibility — every dispatch in this VM goes
+        // through the WinUI summary timer or ObservableCollection's auto-marshalled change events,
+        // so we never actually need to capture it.
+        _ = dispatcher;
         _recents = recents;
         _settingsStore = settingsStore;
         _presetsStore = presetsStore;
@@ -324,9 +326,7 @@ public partial class MainViewModel : ObservableObject
         // The "Also match file path" toggle extends the test to the *directory portion* — the
         // file name above already covers the leaf, so this only adds the parent directories.
         if (FilterIncludesPath && f.Path.Contains(FilterText, StringComparison.OrdinalIgnoreCase)) return true;
-        foreach (var line in f.Lines)
-            if (line.LineText.Contains(FilterText, StringComparison.OrdinalIgnoreCase)) return true;
-        return false;
+        return f.Lines.Any(line => line.LineText.Contains(FilterText, StringComparison.OrdinalIgnoreCase));
     }
 
     partial void OnFilterIncludesPathChanged(bool value)
@@ -344,8 +344,8 @@ public partial class MainViewModel : ObservableObject
     private void RebuildFilteredResults()
     {
         FilteredResults.Clear();
-        foreach (var r in Results)
-            if (PassesFilter(r)) FilteredResults.Add(r);
+        foreach (var r in Results.Where(PassesFilter))
+            FilteredResults.Add(r);
         OnPropertyChanged(nameof(FilterStatusText));
     }
 
@@ -427,7 +427,8 @@ public partial class MainViewModel : ObservableObject
         OperationStarted?.Invoke(this, EventArgs.Empty);
         IsSearching = true;
         Results.Clear();
-        while (_pendingResults.TryDequeue(out _)) { }
+        // Drain anything left over from a previous (cancelled) search.
+        while (_pendingResults.TryDequeue(out _)) { /* drain */ }
         Interlocked.Exchange(ref _examinedCounter, 0);
         Interlocked.Exchange(ref _rejectedCounter, 0);
         Interlocked.Exchange(ref _matchedCounter, 0);
@@ -497,6 +498,7 @@ public partial class MainViewModel : ObservableObject
         {
             StopSummaryTimer();
             IsSearching = false;
+            _searchCts?.Dispose();
             _searchCts = null;
             SearchCompleted?.Invoke(this, EventArgs.Empty);
         }
@@ -693,7 +695,11 @@ public partial class MainViewModel : ObservableObject
                                 newBackups.Add((path, result.BackupPath, File.GetLastWriteTimeUtc(result.BackupPath)));
                         }
                     }
-                    catch (OperationCanceledException) { throw; /* let cancellation surface */ }
+                    // Cancellation must surface so Parallel.ForEachAsync stops cleanly; the explicit
+                    // catch + throw documents that intent next to the per-file fail-soft handlers below.
+#pragma warning disable S2737 // Documented intent — keep the explicit catch even though throw is redundant.
+                    catch (OperationCanceledException) { throw; }
+#pragma warning restore S2737
                     catch (NotSupportedException) { /* file too large; skip */ }
                     catch (IOException) { /* in use; skip */ }
                     catch (UnauthorizedAccessException) { /* skip */ }
@@ -855,14 +861,6 @@ public partial class MainViewModel : ObservableObject
     }
 
     // ---- Helpers ----
-    private SearchRequest BuildRequest(IReadOnlyList<string> roots)
-    {
-        return new SearchRequest(
-            Roots: roots,
-            Enumeration: BuildEnumerationOptions(),
-            Search: BuildSearchOptions());
-    }
-
     private SearchOptions BuildSearchOptions() => new()
     {
         Pattern = SearchPattern,

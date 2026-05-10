@@ -47,7 +47,7 @@ public static class SyntheticCorpus
         // Mostly ASCII tokens with occasional digits/punctuation, organized in lines of ~60–120 chars.
         // Cheap and deterministic; resembles source-code line distributions enough for byte-fastpath
         // and regex-prefilter benchmarks to behave like real workloads.
-        var ms = new MemoryStream(approxSize + 256);
+        using var ms = new MemoryStream(approxSize + 256);
         Span<byte> tokenBuf = stackalloc byte[16];
         var written = 0;
         var lineLen = 0;

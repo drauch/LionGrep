@@ -80,6 +80,7 @@ internal sealed class AppDriver
 
     // ---- Search lifecycle --------------------------------------------------
 
+#pragma warning disable S2325 // Instance methods by API design — every test fixture calls these via `_driver.TriggerXxx()`.
     public void TriggerSearch()
     {
         // Ctrl+Enter is the user-facing keyboard shortcut and bypasses focus assumptions.
@@ -95,6 +96,7 @@ internal sealed class AppDriver
     }
 
     public void PressEscape() => Keyboard.Press(VirtualKeyShort.ESCAPE);
+#pragma warning restore S2325
 
     /// <summary>Polls the status text until the "(running)" suffix disappears or we time out.</summary>
     public void WaitForSearchToFinish(TimeSpan? timeout = null)

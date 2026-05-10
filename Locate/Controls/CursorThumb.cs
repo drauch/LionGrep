@@ -12,7 +12,9 @@ public sealed partial class ColumnResizer : UserControl
 {
     private readonly Thumb _thumb = new();
 
+#pragma warning disable MA0046 // WinUI's DragDeltaEventArgs inherits RoutedEventArgs, not System.EventArgs — the rule is irrelevant here.
     public event EventHandler<DragDeltaEventArgs>? DragDelta;
+#pragma warning restore MA0046
 
     public ColumnResizer()
     {

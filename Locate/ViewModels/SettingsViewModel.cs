@@ -38,9 +38,12 @@ public partial class SettingsViewModel : ObservableObject
         Presets.CollectionChanged += (_, _) => RaiseSelectedPresetValidation();
     }
 
+    // String initializer kept to satisfy non-nullable analysis even though the ctor overwrites it.
+#pragma warning disable S3604 // Initializers ensure non-null defaults if a future ctor branch fails to seed.
     [ObservableProperty] private string _editorCommand = "";
     [ObservableProperty] private bool _dontWarnWhenReplacing;
     [ObservableProperty] private bool _rememberRecentValues = true;
+#pragma warning restore S3604
 
     public ObservableCollection<Preset> Presets { get; } = [];
 

@@ -75,7 +75,7 @@ public sealed class FileSearcher
     }
 
     /// <summary>≤ 2 GiB path: read once into a single span (mmap or buffered). Identical behaviour to v1.0.</summary>
-    private FileMatch? SearchSingleSpan(
+    private static FileMatch? SearchSingleSpan(
         string path, FileInfo info, IMatcher matcher,
         bool skipBinary, bool multilineMode, ref bool wasBinarySkipped, CancellationToken ct)
     {
@@ -114,7 +114,7 @@ public sealed class FileSearcher
     /// holds only decoded strings — no references to the input span — so it's safe to outlive the
     /// underlying mmap or array.
     /// </summary>
-    private FileMatch? SearchSpan(
+    private static FileMatch? SearchSpan(
         string path, ReadOnlySpan<byte> bytes, IMatcher matcher,
         bool skipBinary, bool multilineMode, ref bool wasBinarySkipped, CancellationToken ct)
     {
@@ -283,11 +283,13 @@ public sealed class FileSearcher
         // to advance the running line counter for downstream chunks.
         if (encoding is UTF8Encoding && matcher is RegexMatcher rm && rm.RequiredLiteralUtf8 is not null)
         {
-            var found = rm.CaseSensitive
-                ? content.IndexOf(rm.RequiredLiteralUtf8) >= 0
-                : (rm.RequiredLiteralIsAscii
-                    ? IndexOfAsciiCaseInsensitive(content, rm.RequiredLiteralAsciiLower!) >= 0
-                    : true /* can't safely pre-filter case-insensitive non-ASCII; fall through */);
+            bool found;
+            if (rm.CaseSensitive)
+                found = content.IndexOf(rm.RequiredLiteralUtf8) >= 0;
+            else if (rm.RequiredLiteralIsAscii)
+                found = IndexOfAsciiCaseInsensitive(content, rm.RequiredLiteralAsciiLower!) >= 0;
+            else
+                found = true;   // can't safely pre-filter case-insensitive non-ASCII; assume hit and let the regex engine decide.
             if (!found)
                 return CountNewlines(content, startLineNumber);
         }

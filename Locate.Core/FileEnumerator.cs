@@ -13,11 +13,19 @@ public sealed class FileEnumerator
         return Enumerate(roots, options, onFileRejected: null, ct);
     }
 
+#pragma warning disable S2325 // Instance method by API design — every caller goes through `_enumerator.Enumerate(...)`.
     public IEnumerable<EnumeratedFile> Enumerate(IReadOnlyList<string> roots, FileEnumerationOptions options, IProgress<int>? onFileRejected, CancellationToken ct = default)
+#pragma warning restore S2325
     {
+        // Argument validation runs eagerly at call time; the iterator body lives in EnumerateCore
+        // so callers don't have to start consuming the enumerable to learn they passed null.
         ArgumentNullException.ThrowIfNull(roots);
         ArgumentNullException.ThrowIfNull(options);
+        return EnumerateCore(roots, options, onFileRejected, ct);
+    }
 
+    private static IEnumerable<EnumeratedFile> EnumerateCore(IReadOnlyList<string> roots, FileEnumerationOptions options, IProgress<int>? onFileRejected, CancellationToken ct)
+    {
         var fileFilter = CompileFileNameFilter(options);
         var pathExclude = CompilePathExclusion(options);
 
@@ -86,7 +94,7 @@ public sealed class FileEnumerator
 
     private static FileAttributes ComputeAttributesToSkip(FileEnumerationOptions options)
     {
-        FileAttributes skip = 0;
+        FileAttributes skip = FileAttributes.None;
         if (!options.IncludeHidden) skip |= FileAttributes.Hidden;
         if (!options.IncludeSystemFiles) skip |= FileAttributes.System;
         if (!options.FollowSymbolicLinks) skip |= FileAttributes.ReparsePoint;

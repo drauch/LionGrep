@@ -5,7 +5,7 @@ using Locate.Bench.Datasets;
 
 namespace Locate.Bench;
 
-internal class Program
+internal static class Program
 {
     static int Main(string[] args)
     {
@@ -20,7 +20,7 @@ internal class Program
                 "code"  => SyntheticCorpus.Profile.CodeRepoLike,
                 "mixed" => SyntheticCorpus.Profile.MixedSizes,
                 "large" => SyntheticCorpus.Profile.FewLargeFiles,
-                _ => throw new ArgumentException($"Unknown profile '{profileName}'. Use code|mixed|large.")
+                _ => throw new ArgumentException($"Unknown profile '{profileName}'. Use code|mixed|large.", nameof(args))
             };
             var dir = SyntheticCorpus.Build(profileName, profile, seed: 42, needle: "blazingNeedle");
             Console.WriteLine(dir);

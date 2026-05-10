@@ -237,7 +237,7 @@ public class FileEnumeratorTests
     [Test]
     public void HiddenFiles_ExcludedByDefault()
     {
-        var visible = Touch("v.txt");
+        Touch("v.txt");
         var hidden = Touch("h.txt");
         File.SetAttributes(hidden, File.GetAttributes(hidden) | FileAttributes.Hidden);
 

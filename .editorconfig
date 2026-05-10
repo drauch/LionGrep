@@ -1,0 +1,63 @@
+root = true
+
+[*.cs]
+# ---- Analyzer rule suppressions, codebase-wide, with one-line rationale ----
+# (Per-occurrence suppressions live next to the code with #pragma warning disable.)
+
+# MA0048 (Meziantou): File name must match type name — multiple related types per file is
+# intentional in a few places (e.g. TextSegment + FileMatchViewModel + LineMatchViewModel).
+dotnet_diagnostic.MA0048.severity = none
+
+# MA0011 (Meziantou): IFormatProvider is missing — ordinal-only by design (see
+# project_search_semantics memory); we never want culture-aware comparison or formatting.
+dotnet_diagnostic.MA0011.severity = none
+
+# MA0004 (Meziantou): Use ConfigureAwait(false) — this is a desktop UI app, not a library;
+# we *want* continuations on the captured (UI) SynchronizationContext.
+dotnet_diagnostic.MA0004.severity = none
+
+# VSTHRD100 (VS Threading): Avoid async void — every async-void in this codebase is a WinUI
+# event handler (Click="OnFooClicked"); RoutedEventHandler isn't async-Task-compatible so
+# async void is the only shape that works here.
+dotnet_diagnostic.VSTHRD100.severity = none
+
+# AsyncFixer03: same reasoning as VSTHRD100 — duplicates the rule under a different code.
+dotnet_diagnostic.AsyncFixer03.severity = none
+
+# AsyncFixer01 (await-only-one-thing): not actionable on async-void event handlers (we can't
+# return Task), and the codebase keeps the async/await shape so exceptions flow into
+# AppDomain.UnhandledException with stack traces instead of being lost in fire-and-forget.
+dotnet_diagnostic.AsyncFixer01.severity = none
+
+# MA0051 (Meziantou): Method is too long — we don't enforce a 60-line cap. Search orchestration
+# and replace dispatch methods are coherent units that resist splitting without losing clarity.
+dotnet_diagnostic.MA0051.severity = none
+
+# MA0009 (Meziantou): Regex without timeout — user-provided patterns are typed by the (trusted)
+# operator of a desktop app, not exposed to attackers; cancellation tokens already terminate
+# runaway searches. Adding a per-pattern timeout would conflict with intentionally heavy
+# searches over large corpora.
+dotnet_diagnostic.MA0009.severity = none
+
+# MA0008 (Meziantou): Add StructLayoutAttribute — fires on every `readonly record struct`
+# even though they're never crossing a native ABI boundary; default sequential layout is fine.
+dotnet_diagnostic.MA0008.severity = none
+
+# S101 (Sonar): Type names should match PascalCase — fires on Win32 P/Invoke structs (POINT,
+# MINMAXINFO, OPENASINFO) where matching the Win32 SDK casing is intentional and useful.
+dotnet_diagnostic.S101.severity = none
+
+# S125 (Sonar): Commented-out code — Sonar's heuristic is wrong here; the comments it flags
+# are explanatory captions on test fixtures and reference notes, not dead code.
+dotnet_diagnostic.S125.severity = none
+
+[Locate.Core.Tests/**.cs]
+# MA0002 (Meziantou): Use IEqualityComparer<string> overload — test assertions on string
+# collections; default ordinal equality matches our codebase invariant exactly.
+dotnet_diagnostic.MA0002.severity = none
+
+[Locate.UI.Tests/**.cs]
+# S2925 (Sonar): Thread.Sleep in tests — FlaUI smoke tests need short sleeps to wait for
+# UI Automation to settle between actions; there's no race-free alternative below the
+# UIA layer.
+dotnet_diagnostic.S2925.severity = none

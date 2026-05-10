@@ -57,7 +57,7 @@ public sealed partial class MainWindow : Window
         ViewModel.SearchCompleted += (_, _) => OnSearchCompleted();
         ViewModel.PropertyChanged += (_, e) =>
         {
-            if (e.PropertyName == nameof(MainViewModel.WindowTitle))
+            if (string.Equals(e.PropertyName, nameof(MainViewModel.WindowTitle), StringComparison.Ordinal))
                 Title = ViewModel.WindowTitle;
         };
 
@@ -78,10 +78,10 @@ public sealed partial class MainWindow : Window
     {
         if (e.Key != VirtualKey.Enter) return;
         var ctrl = (Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Control)
-                    & Windows.UI.Core.CoreVirtualKeyStates.Down) != 0;
+                    & Windows.UI.Core.CoreVirtualKeyStates.Down) != Windows.UI.Core.CoreVirtualKeyStates.None;
         if (!ctrl) return;
         var alt = (Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Menu)
-                   & Windows.UI.Core.CoreVirtualKeyStates.Down) != 0;
+                   & Windows.UI.Core.CoreVirtualKeyStates.Down) != Windows.UI.Core.CoreVirtualKeyStates.None;
         e.Handled = true;
         // Ctrl+Alt+Enter is the explicit "replace immediately" bypass — no confirmation dialog.
         if (alt)
@@ -230,7 +230,7 @@ public sealed partial class MainWindow : Window
         ShowQueryButton.Visibility = collapsed ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    private nint SubclassProc(nint hWnd, uint msg, nint wParam, nint lParam, nuint subclassId, nuint refData)
+    private static nint SubclassProc(nint hWnd, uint msg, nint wParam, nint lParam, nuint subclassId, nuint refData)
     {
         if (msg == NativeMethods.WM_GETMINMAXINFO)
         {
@@ -350,12 +350,6 @@ public sealed partial class MainWindow : Window
         flyout.ShowAt(anchor, new FlyoutShowOptions { Placement = FlyoutPlacementMode.Bottom });
     }
 
-    private static string TruncateForMenu(string s)
-    {
-        s = s.Replace('\r', ' ').Replace('\n', ' ');
-        return s.Length > 80 ? s[..77] + "…" : s;
-    }
-
     // ---- Column resize thumbs ----
     private void OnNameThumbDragDelta(object sender, DragDeltaEventArgs e)
         => ViewModel.NameWidth = ResizeWidth(ViewModel.NameWidth, e.HorizontalChange);
@@ -422,10 +416,11 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        if (selected.Count > 1)
+        if (selected.Count > 1 &&
+            !await ConfirmBulkAsync($"Open {selected.Count:N0} files in editor?",
+                $"This will launch {selected.Count:N0} editor windows."))
         {
-            if (!await ConfirmBulkAsync($"Open {selected.Count:N0} files in editor?",
-                $"This will launch {selected.Count:N0} editor windows.")) return;
+            return;
         }
         foreach (var f in selected)
             OpenFileInEditor(f, settings.EditorCommand);
@@ -449,11 +444,13 @@ public sealed partial class MainWindow : Window
         try
         {
             WriteXlsx(temp, ViewModel.FilteredResults.ToList());
+#pragma warning disable IDISP004 // Fire-and-forget shell launch — we don't track the spawned Excel process.
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
             {
                 FileName = temp,
                 UseShellExecute = true,
             });
+#pragma warning restore IDISP004
             await Task.CompletedTask;
         }
         catch (Exception ex)
@@ -503,18 +500,22 @@ public sealed partial class MainWindow : Window
     {
         var selected = ExplicitlySelectedFiles();
         if (selected.Count == 0) return;
-        if (selected.Count > 1)
+        if (selected.Count > 1 &&
+            !await ConfirmBulkAsync($"Open {selected.Count:N0} folders?",
+                $"This will launch {selected.Count:N0} Explorer windows."))
         {
-            if (!await ConfirmBulkAsync($"Open {selected.Count:N0} folders?",
-                $"This will launch {selected.Count:N0} Explorer windows.")) return;
+            return;
         }
         foreach (var f in selected)
         {
             try
             {
+#pragma warning disable IDISP004 // Fire-and-forget Explorer launch; the Process handle isn't useful to us.
                 System.Diagnostics.Process.Start("explorer.exe", $"/select,\"{f.Path}\"");
+#pragma warning restore IDISP004
             }
-            catch { /* ignore */ }
+            catch (System.ComponentModel.Win32Exception) { /* explorer not found / launch denied */ }
+            catch (System.IO.FileNotFoundException) { /* the file vanished between selection and launch */ }
         }
     }
 
@@ -566,7 +567,7 @@ public sealed partial class MainWindow : Window
         for (var i = 0; i < count; i++)
         {
             var child = VisualTreeHelper.GetChild(root, i);
-            if (child is FrameworkElement fe && fe.Name == name) return child;
+            if (child is FrameworkElement fe && string.Equals(fe.Name, name, StringComparison.Ordinal)) return child;
             var result = FindDescendantByName(child, name);
             if (result is not null) return result;
         }
@@ -578,12 +579,14 @@ public sealed partial class MainWindow : Window
     {
         var selected = ExplicitlySelectedFiles();
         if (selected.Count == 0) return;
-        if (selected.Count > 1)
+        if (selected.Count > 1 &&
+            !await ConfirmBulkAsync($"Open {selected.Count:N0} files with…?",
+                $"This will open {selected.Count:N0} 'Open With' dialogs."))
         {
-            if (!await ConfirmBulkAsync($"Open {selected.Count:N0} files with…?",
-                $"This will open {selected.Count:N0} 'Open With' dialogs.")) return;
+            return;
         }
         var hwnd = _windowHandle;
+#pragma warning disable S3267 // Foreach body spawns a Task per file with closures over local state — Select wouldn't simplify this.
         foreach (var f in selected)
         {
             var path = f.Path;
@@ -602,9 +605,11 @@ public sealed partial class MainWindow : Window
                     };
                     NativeMethods.SHOpenWithDialog(hwnd, ref info);
                 }
-                catch { /* ignore */ }
+                catch (System.ComponentModel.Win32Exception) { /* shell dialog launch failed */ }
+                catch (System.IO.FileNotFoundException) { /* file vanished between selection and launch */ }
             });
         }
+#pragma warning restore S3267
     }
 
     // ---- Cut / Copy files (Explorer-compatible clipboard) ----
@@ -820,7 +825,9 @@ public sealed partial class MainWindow : Window
         flyout.Items.Add(new MenuFlyoutSeparator());
 
         var saveAs = new MenuFlyoutItem { Text = "Save current as preset…" };
+#pragma warning disable VSTHRD101 // Async-lambda event handler — same exception-propagation profile as our async-void Click handlers (which the editorconfig already exempts).
         saveAs.Click += async (_, _) => await SaveCurrentAsPresetAsync();
+#pragma warning restore VSTHRD101
         flyout.Items.Add(saveAs);
 
         var edit = new MenuFlyoutItem { Text = "Edit…" };
@@ -930,11 +937,13 @@ public sealed partial class MainWindow : Window
         nameBox.TextChanged += (_, _) => Revalidate();
         hotkeyBox.TextChanged += (_, _) => Revalidate();
 
+#pragma warning disable VSTHRD101 // Async-lambda event handler — same risk profile as the async-void Click handlers we accept elsewhere.
         assignBtn.Click += async (_, _) =>
         {
             var captured = await HotkeyCaptureDialog.CaptureAsync(Content.XamlRoot);
             if (captured is not null) hotkeyBox.Text = captured;
         };
+#pragma warning restore VSTHRD101
 
         nameBox.Focus(FocusState.Programmatic);
         Revalidate();   // initial state — Name empty, dialog Save disabled
@@ -1110,7 +1119,7 @@ public sealed partial class MainWindow : Window
     {
         if (sender is not FrameworkElement { Tag: string column }) return;
 
-        if (column == _sortColumn)
+        if (string.Equals(column, _sortColumn, StringComparison.Ordinal))
         {
             _sortDirection = SortDirectionLogic.ToggleNext(_sortDirection);
             if (_sortDirection == SortDirection.None) _sortColumn = null;
@@ -1139,11 +1148,13 @@ public sealed partial class MainWindow : Window
             _ => ViewModel.Results.OrderBy(x => x.InsertionIndex),
         };
         // Always apply Name as secondary when primary is Path, so siblings sort alphabetically.
-        if (_sortColumn == "Path")
+        if (string.Equals(_sortColumn, "Path", StringComparison.Ordinal))
         {
+#pragma warning disable MA0002 // FileName is plain ASCII column data; default ordinal compare is what we want.
             ordered = _sortDirection == SortDirection.Descending
                 ? ordered.ThenByDescending(x => x.FileName)
                 : ordered.ThenBy(x => x.FileName);
+#pragma warning restore MA0002
         }
         ViewModel.ReplaceResults(ordered.ToList());
     }
@@ -1165,7 +1176,7 @@ public sealed partial class MainWindow : Window
     }
 
     private string HeaderText(string column, string display) =>
-        SortDirectionLogic.FormatHeader(display, column == _sortColumn, _sortDirection);
+        SortDirectionLogic.FormatHeader(display, string.Equals(column, _sortColumn, StringComparison.Ordinal), _sortDirection);
 
     private static bool TryParseHotkey(string hotkey, out VirtualKey key, out VirtualKeyModifiers modifiers)
     {
