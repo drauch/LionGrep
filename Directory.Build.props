@@ -1,0 +1,10 @@
+<Project>
+
+  <!-- Analyzers applied across every project in the solution. PrivateAssets="all" keeps them
+       confined to the build graph so consumers don't pull them transitively. -->
+  <ItemGroup>
+    <PackageReference Include="IDisposableAnalyzers" PrivateAssets="all" IncludeAssets="runtime; build; native; contentfiles; analyzers; buildtransitive" />
+    <PackageReference Include="Lindhart.Analyser.MissingAwaitWarning" PrivateAssets="all" IncludeAssets="runtime; build; native; contentfiles; analyzers; buildtransitive" />
+  </ItemGroup>
+
+</Project>

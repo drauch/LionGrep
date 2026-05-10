@@ -182,9 +182,14 @@ public sealed class Searcher
             // If the consumer stopped early (caller broke out of foreach), tell the producer to give up so
             // it doesn't keep working on a queue nobody's reading.
             linkedCts.Cancel();
+            // IDISP007: queue and linkedCts look like injected disposables, but ParallelStream created
+            // them solely to hand off to this method for cleanup at end of iteration. The disposal is
+            // correct — suppression documents the ownership transfer.
+#pragma warning disable IDISP007
             queue.Dispose();
             ObserveProducerOrRethrow(producer);
             linkedCts.Dispose();
+#pragma warning restore IDISP007
         }
     }
 
