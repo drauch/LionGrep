@@ -1022,11 +1022,7 @@ public sealed partial class MainWindow : Window
     private async void OnCtrlAltEnterAccelerator(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
     {
         args.Handled = true;
-        // Ctrl+Alt+Enter bypasses the 3-way confirmation dialog and replaces immediately (no .bak).
-        // Like the Replace button, it runs an implicit search first if there are no current results.
-        if (!ViewModel.IsReplaceEnabled) return;
-        if (!await EnsureResultsAsync()) return;
-        await ViewModel.ReplaceCommand.ExecuteAsync(null);
+        await ConfirmAndReplaceAsync();
     }
 
     private void OnEscapeAccelerator(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
@@ -1061,7 +1057,21 @@ public sealed partial class MainWindow : Window
     }
 
     // ---- Replace with confirmation ----
-    private async void OnReplaceClicked(object sender, RoutedEventArgs e) => await ConfirmAndReplaceAsync();
+    private async void OnReplaceSplitClicked(SplitButton sender, SplitButtonClickEventArgs args) => await ConfirmAndReplaceAsync();
+
+    private async void OnReplaceWithBackupsMenuClicked(object sender, RoutedEventArgs e)
+    {
+        if (!ViewModel.IsReplaceEnabled) return;
+        if (!await EnsureResultsAsync()) return;
+        await ViewModel.ReplaceWithBackupsCommand.ExecuteAsync(null);
+    }
+
+    private async void OnReplaceWithoutBackupsMenuClicked(object sender, RoutedEventArgs e)
+    {
+        if (!ViewModel.IsReplaceEnabled) return;
+        if (!await EnsureResultsAsync()) return;
+        await ViewModel.ReplaceCommand.ExecuteAsync(null);
+    }
 
     private async Task ConfirmAndReplaceAsync()
     {
@@ -1088,9 +1098,9 @@ public sealed partial class MainWindow : Window
                     + Environment.NewLine + Environment.NewLine
                     + "• Replace with backups: writes a .bak copy next to each modified file (use Undo to restore)."
                     + Environment.NewLine
-                    + "• Replace: overwrites in place. Cannot be undone.",
+                    + "• Replace w/o backups: overwrites in place. Cannot be undone.",
             PrimaryButtonText = "Replace with backups",
-            SecondaryButtonText = "Replace",
+            SecondaryButtonText = "Replace w/o backups",
             CloseButtonText = "Cancel",
             DefaultButton = ContentDialogButton.Close,
         };

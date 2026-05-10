@@ -347,15 +347,25 @@
                             <TextBlock Text="Cancel" />
                         </StackPanel>
                     </Button>
-                    <Button Click="OnReplaceClicked"
-                            IsEnabled="{x:Bind ViewModel.IsReplaceEnabled, Mode=OneWay}"
-                            Visibility="{x:Bind ViewModel.ReplaceButtonVisibility, Mode=OneWay}"
-                            ToolTipService.ToolTip="Choose Replace, Replace with backups (.bak), or Cancel">
-                        <StackPanel Orientation="Horizontal" Spacing="4">
-                            <FontIcon Glyph="&#xE74E;" FontSize="12" />
-                            <TextBlock Text="Replace…" />
-                        </StackPanel>
-                    </Button>
+                    <SplitButton x:Name="ReplaceSplit" Click="OnReplaceSplitClicked"
+                                 IsEnabled="{x:Bind ViewModel.IsReplaceEnabled, Mode=OneWay}"
+                                 Visibility="{x:Bind ViewModel.ReplaceButtonVisibility, Mode=OneWay}"
+                                 ToolTipService.ToolTip="Choose Replace, Replace with backups (.bak), or Cancel (Ctrl+Alt+Enter)">
+                        <SplitButton.Content>
+                            <StackPanel Orientation="Horizontal" Spacing="4">
+                                <FontIcon Glyph="&#xE74E;" FontSize="12" />
+                                <TextBlock Text="Replace…" />
+                            </StackPanel>
+                        </SplitButton.Content>
+                        <SplitButton.Flyout>
+                            <MenuFlyout>
+                                <MenuFlyoutItem Text="Replace with backups" Click="OnReplaceWithBackupsMenuClicked"
+                                                ToolTipService.ToolTip="Write a .bak copy next to each modified file (use Undo to restore)" />
+                                <MenuFlyoutItem Text="Replace without backups" Click="OnReplaceWithoutBackupsMenuClicked"
+                                                ToolTipService.ToolTip="Overwrite in place. Cannot be undone." />
+                            </MenuFlyout>
+                        </SplitButton.Flyout>
+                    </SplitButton>
                     <Button Command="{x:Bind ViewModel.CancelReplaceCommand}"
                             Visibility="{x:Bind ViewModel.CancelReplaceButtonVisibility, Mode=OneWay}"
                             ToolTipService.ToolTip="Stop the in-progress replace (already-rewritten files stay rewritten)">
