@@ -256,7 +256,9 @@ Ctrl+C is **not** bound by default — use the right-click menu (or Export butto
 
 Click **Search in results** in the SEARCH RESULTS row to expand a dedicated filter row below the buttons. The textbox there filters the visible result set live; updates are debounced ~250 ms so typing doesn't restart the filter on every keystroke.
 
-By default the filter only tests against each file's **matched line text**. Tick **Also match file path** in the filter row to include the full file path in the match. The "showing X of N" indicator next to the textbox tells you what's currently visible.
+The filter always tests against each file's **name** and **matched line text** — those are visible in every row, so a filter that matches either keeps the row. Tick **Also match file path** in the filter row to extend the test to the parent directory portion of the path as well. The "showing X of N" indicator next to the textbox tells you what's currently visible.
+
+**Visual highlights**: occurrences of the current filter text are highlighted **blue** wherever they appear (file name, directory, matched line text). The engine's original match is highlighted **yellow**; where the two overlap, blue wins because that's the user's current focus, and the engine match is still distinguished by font weight in the matched-line text.
 
 **Closing collapses and clears.** Clicking the toggle off, or pressing **Esc** while the textbox is focused, hides the filter row and clears the filter text — no hidden filter state. Reopening starts from a clean slate.
 

@@ -313,6 +313,12 @@ public partial class MainViewModel : ObservableObject
     private bool PassesFilter(FileMatchViewModel f)
     {
         if (string.IsNullOrEmpty(FilterText)) return true;
+        // The file name is always visible in every row, so the filter must always consider it —
+        // otherwise typing a substring of a visible file name (e.g. "SignS" while looking at
+        // "SignServiceFacade.cs") could silently drop the row, which reads to the user as a bug.
+        if (f.FileName.Contains(FilterText, StringComparison.OrdinalIgnoreCase)) return true;
+        // The "Also match file path" toggle extends the test to the *directory portion* — the
+        // file name above already covers the leaf, so this only adds the parent directories.
         if (FilterIncludesPath && f.Path.Contains(FilterText, StringComparison.OrdinalIgnoreCase)) return true;
         foreach (var line in f.Lines)
             if (line.LineText.Contains(FilterText, StringComparison.OrdinalIgnoreCase)) return true;
