@@ -12,8 +12,14 @@
     DefaultButton="Primary">
 
     <StackPanel Spacing="8" MinWidth="360">
-        <TextBlock Text="LionGrep" FontSize="22" FontWeight="SemiBold" />
-        <TextBlock x:Name="VersionText" Text="Version 0.1.0 (preview)" Opacity="0.7" />
+        <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+            <Image Source="ms-appx:///Assets/Square150x150Logo.scale-200.png"
+                   Width="48" Height="48" VerticalAlignment="Center" />
+            <StackPanel VerticalAlignment="Center">
+                <TextBlock Text="LionGrep" FontSize="22" FontWeight="SemiBold" />
+                <TextBlock x:Name="VersionText" Text="Version 0.1.0 (preview)" Opacity="0.7" />
+            </StackPanel>
+        </StackPanel>
         <TextBlock TextWrapping="Wrap"
                    Text="A UI-powered grep-like search tool for Windows. Built on .NET 10 and WinUI 3." />
     </StackPanel>
