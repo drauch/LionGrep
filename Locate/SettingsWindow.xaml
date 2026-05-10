@@ -5,6 +5,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:vm="using:Locate.ViewModels"
     xmlns:models="using:Locate.Models"
+    xmlns:lc="using:Locate.Controls"
     xmlns:local="using:Locate"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -16,6 +17,9 @@
     </Window.SystemBackdrop>
 
     <Grid Padding="14" RowSpacing="10">
+        <Grid.Resources>
+            <lc:NullableDateTimeOffsetConverter x:Key="NullableDateTimeOffsetConverter" />
+        </Grid.Resources>
         <Grid.KeyboardAccelerators>
             <KeyboardAccelerator Key="Escape" Invoked="OnEscapePressed" />
         </Grid.KeyboardAccelerators>
@@ -67,7 +71,8 @@
                         <TextBlock Text="Add" />
                     </StackPanel>
                 </Button>
-                <Button Style="{StaticResource SmallButton}" Command="{x:Bind ViewModel.RemovePresetCommand}"
+                <Button Style="{StaticResource SmallButton}" Click="OnRemovePresetClicked"
+                        IsEnabled="{x:Bind ViewModel.HasSelectedPreset, Mode=OneWay}"
                         ToolTipService.ToolTip="Remove the selected preset">
                     <StackPanel Orientation="Horizontal" Spacing="4">
                         <FontIcon Glyph="&#xE738;" FontSize="10" />
@@ -96,9 +101,10 @@
                 </Border>
 
                 <Border Grid.Column="1" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="4" Padding="14">
-                    <StackPanel Spacing="10"
-                                DataContext="{x:Bind ViewModel.SelectedPreset, Mode=OneWay}"
-                                Visibility="{x:Bind ViewModel.HasSelectedPreset, Mode=OneWay}">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel Spacing="10"
+                                    DataContext="{x:Bind ViewModel.SelectedPreset, Mode=OneWay}"
+                                    Visibility="{x:Bind ViewModel.HasSelectedPreset, Mode=OneWay}">
                         <TextBlock Text="Preset details" FontWeight="SemiBold" FontSize="12" />
 
                         <Grid ColumnSpacing="8" RowSpacing="8">
@@ -127,24 +133,23 @@
                             <TextBlock Text="Hotkey:" Grid.Row="1" VerticalAlignment="Top" Margin="0,6,0,0" FontSize="12" />
                             <StackPanel Grid.Row="1" Grid.Column="1" Spacing="2">
                                 <Grid>
-                                    <!-- TextBox + overlapping "Assign" button on the right edge. The
-                                         right-padding on the TextBox keeps typed text from running
-                                         under the button. -->
+                                    <!-- TextBox + overlapping capture-icon button on the LEFT edge. The
+                                         left-padding on the TextBox keeps typed text from running under
+                                         the button. -->
                                     <TextBox x:Name="HotkeyBox"
                                              Text="{Binding Hotkey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                              PlaceholderText="e.g. Ctrl+1, Alt+F2 — leave empty for none" FontSize="12"
-                                             Padding="10,5,72,5"
+                                             Padding="38,5,10,5"
                                              BorderBrush="{x:Bind ViewModel.SelectedPresetHotkeyBorderBrush, Mode=OneWay}"
                                              BorderThickness="2" />
+                                    <!-- Icon-only: clicking is optional — type a hotkey directly OR
+                                         press this and the next key combination is captured. -->
                                     <Button Style="{StaticResource SmallButton}"
-                                            HorizontalAlignment="Right" VerticalAlignment="Center"
-                                            Margin="0,0,4,0"
+                                            HorizontalAlignment="Left" VerticalAlignment="Center"
+                                            Margin="4,0,0,0"
                                             Click="OnAssignHotkeyClicked"
-                                            ToolTipService.ToolTip="Press a hotkey to capture it">
-                                        <StackPanel Orientation="Horizontal" Spacing="4">
-                                            <FontIcon Glyph="&#xE765;" FontSize="10" />
-                                            <TextBlock Text="Assign" />
-                                        </StackPanel>
+                                            ToolTipService.ToolTip="Press a key combination to capture it">
+                                        <FontIcon Glyph="&#xE765;" FontSize="11" />
                                     </Button>
                                 </Grid>
                                 <!-- Reserved / parse-error / duplicate feedback. Empty hotkey is fine. -->
@@ -168,19 +173,166 @@
                         </Grid>
 
                         <TextBlock Margin="0,4,0,0" Opacity="0.6" FontSize="11" TextWrapping="Wrap"
-                                   Text="When activated, only checked groups are filled. Unchecked groups are left untouched. To re-snapshot the captured form values, save a new preset from the main window." />
-                    </StackPanel>
+                                   Text="When activated, only checked groups are filled. Values below are stored verbatim — fields cleared here will overwrite the form to empty when the preset applies." />
+
+                        <!-- Captured form values. Editable so a preset created via Add can be fully
+                             configured here without going through 'Save current as preset' on the
+                             main window. Mirrors the main form's Where/What/Filter sections. -->
+
+                        <!-- WHERE -->
+                        <TextBlock Text="WHERE" FontWeight="SemiBold" FontSize="11" Opacity="0.7" CharacterSpacing="60" Margin="0,8,0,0" />
+                        <Grid ColumnSpacing="8" RowSpacing="6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="100" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="Search in:" Grid.Column="0" VerticalAlignment="Top" Margin="0,6,0,0" FontSize="12" />
+                            <TextBox Grid.Column="1"
+                                     Text="{Binding SearchIn, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                     AcceptsReturn="True" TextWrapping="Wrap" MinHeight="58" MaxHeight="120"
+                                     FontSize="12"
+                                     PlaceholderText="One directory per line" />
+                        </Grid>
+
+                        <!-- WHAT -->
+                        <TextBlock Text="WHAT" FontWeight="SemiBold" FontSize="11" Opacity="0.7" CharacterSpacing="60" Margin="0,8,0,0" />
+                        <Grid ColumnSpacing="8" RowSpacing="6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="100" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <TextBlock Text="Search for:" Grid.Row="0" VerticalAlignment="Center" FontSize="12" />
+                            <TextBox Grid.Row="0" Grid.Column="1" FontSize="12"
+                                     Text="{Binding SearchPattern, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                     BorderBrush="{x:Bind ViewModel.PresetSearchPatternBorderBrush, Mode=OneWay}"
+                                     BorderThickness="2" />
+                            <TextBlock Text="Replace with:" Grid.Row="1" VerticalAlignment="Center" FontSize="12" />
+                            <TextBox Grid.Row="1" Grid.Column="1" FontSize="12"
+                                     Text="{Binding ReplacePattern, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <TextBlock Text="Toggles:" Grid.Row="2" VerticalAlignment="Top" Margin="0,4,0,0" FontSize="12" />
+                            <StackPanel Grid.Row="2" Grid.Column="1" Spacing="3">
+                                <CheckBox Style="{StaticResource CompactCheckBox}" Content="Use regex" IsChecked="{Binding UseRegex, Mode=TwoWay}" />
+                                <CheckBox Style="{StaticResource CompactCheckBox}" Content="Case sensitive" IsChecked="{Binding CaseSensitive, Mode=TwoWay}" />
+                                <CheckBox Style="{StaticResource CompactCheckBox}" Content="Whole word" IsChecked="{Binding WholeWord, Mode=TwoWay}" />
+                                <CheckBox Style="{StaticResource CompactCheckBox}" Content="Preserve case" IsChecked="{Binding PreserveCase, Mode=TwoWay}" />
+                                <CheckBox Style="{StaticResource CompactCheckBox}" Content="Dot matches newline (regex only)" IsChecked="{Binding DotMatchesNewline, Mode=TwoWay}" />
+                                <CheckBox Style="{StaticResource CompactCheckBox}" Content="Search in file &amp; sub directory names" IsChecked="{Binding SearchInNames, Mode=TwoWay}" />
+                                <CheckBox Style="{StaticResource CompactCheckBox}" Content="Keep file date when replacing" IsChecked="{Binding KeepFileDate, Mode=TwoWay}" />
+                            </StackPanel>
+                        </Grid>
+
+                        <!-- FILTER -->
+                        <TextBlock Text="FILTER" FontWeight="SemiBold" FontSize="11" Opacity="0.7" CharacterSpacing="60" Margin="0,8,0,0" />
+                        <Grid ColumnSpacing="8" RowSpacing="6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="100" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <TextBlock Text="File names:" Grid.Row="0" VerticalAlignment="Center" FontSize="12" />
+                            <TextBox Grid.Row="0" Grid.Column="1" FontSize="12"
+                                     Text="{Binding FileNames, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                     PlaceholderText="*.cs|*.ts  (use ! to exclude)"
+                                     BorderBrush="{x:Bind ViewModel.PresetFileNamesBorderBrush, Mode=OneWay}"
+                                     BorderThickness="2" />
+                            <CheckBox Grid.Row="0" Grid.Column="2" Style="{StaticResource CompactCheckBox}"
+                                      Content="Regex" Margin="6,0,0,0" IsChecked="{Binding FileNamesRegex, Mode=TwoWay}" />
+
+                            <TextBlock Text="Exclude paths:" Grid.Row="1" VerticalAlignment="Center" FontSize="12" />
+                            <TextBox Grid.Row="1" Grid.Column="1" FontSize="12"
+                                     Text="{Binding ExcludePaths, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                     PlaceholderText="bin|obj|node_modules"
+                                     BorderBrush="{x:Bind ViewModel.PresetExcludePathsBorderBrush, Mode=OneWay}"
+                                     BorderThickness="2" />
+                            <CheckBox Grid.Row="1" Grid.Column="2" Style="{StaticResource CompactCheckBox}"
+                                      Content="Regex" Margin="6,0,0,0" IsChecked="{Binding ExcludePathsRegex, Mode=TwoWay}" />
+
+                            <TextBlock Text="Size:" Grid.Row="2" VerticalAlignment="Center" FontSize="12" />
+                            <StackPanel Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2" Orientation="Horizontal" Spacing="6">
+                                <ComboBox SelectedIndex="{Binding SizeModeIndex, Mode=TwoWay}" FontSize="12" MinWidth="120">
+                                    <ComboBoxItem Content="All sizes" />
+                                    <ComboBoxItem Content="Less than" />
+                                    <ComboBoxItem Content="Greater than" />
+                                    <ComboBoxItem Content="Between" />
+                                </ComboBox>
+                                <!-- Lower bound: shown for any non-"All" mode. -->
+                                <TextBox FontSize="12" Width="80"
+                                         Text="{Binding SizeKb, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                         Visibility="{x:Bind ViewModel.PresetSizeValueVisibility, Mode=OneWay}" />
+                                <TextBlock Text="KB" VerticalAlignment="Center" FontSize="12" Opacity="0.7"
+                                           Visibility="{x:Bind ViewModel.PresetSizeValueVisibility, Mode=OneWay}" />
+                                <!-- Upper bound + KB label: only "Between". -->
+                                <TextBox FontSize="12" Width="80"
+                                         Text="{Binding SizeKbUpper, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                         Visibility="{x:Bind ViewModel.PresetSizeUpperVisibility, Mode=OneWay}"
+                                         ToolTipService.ToolTip="Upper bound" />
+                                <TextBlock Text="KB" VerticalAlignment="Center" FontSize="12" Opacity="0.7"
+                                           Visibility="{x:Bind ViewModel.PresetSizeUpperVisibility, Mode=OneWay}" />
+                            </StackPanel>
+
+                            <TextBlock Text="Date:" Grid.Row="3" VerticalAlignment="Center" FontSize="12" />
+                            <StackPanel Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="2" Orientation="Horizontal" Spacing="6">
+                                <ComboBox SelectedIndex="{Binding DateModeIndex, Mode=TwoWay}" FontSize="12" MinWidth="120">
+                                    <ComboBoxItem Content="All dates" />
+                                    <ComboBoxItem Content="Newer than" />
+                                    <ComboBoxItem Content="Older than" />
+                                    <ComboBoxItem Content="Exactly on" />
+                                    <ComboBoxItem Content="Between" />
+                                </ComboBox>
+                                <!-- Lower picker: shown for any non-"All" date mode. -->
+                                <CalendarDatePicker Date="{Binding DateFrom, Mode=TwoWay, Converter={StaticResource NullableDateTimeOffsetConverter}}"
+                                                    PlaceholderText="from"
+                                                    Visibility="{x:Bind ViewModel.PresetDateFromVisibility, Mode=OneWay}" />
+                                <!-- Upper picker: only "Between". -->
+                                <CalendarDatePicker Date="{Binding DateTo, Mode=TwoWay, Converter={StaticResource NullableDateTimeOffsetConverter}}"
+                                                    PlaceholderText="to"
+                                                    Visibility="{x:Bind ViewModel.PresetDateToVisibility, Mode=OneWay}"
+                                                    ToolTipService.ToolTip="Upper bound" />
+                            </StackPanel>
+
+                            <TextBlock Text="Traversal:" Grid.Row="4" VerticalAlignment="Top" Margin="0,4,0,0" FontSize="12" />
+                            <StackPanel Grid.Row="4" Grid.Column="1" Grid.ColumnSpan="2" Spacing="3">
+                                <CheckBox Style="{StaticResource CompactCheckBox}" Content="Include subfolders" IsChecked="{Binding IncludeSubfolders, Mode=TwoWay}" />
+                                <CheckBox Style="{StaticResource CompactCheckBox}" Content="Include system files" IsChecked="{Binding IncludeSystem, Mode=TwoWay}" />
+                                <CheckBox Style="{StaticResource CompactCheckBox}" Content="Include hidden items" IsChecked="{Binding IncludeHidden, Mode=TwoWay}" />
+                                <CheckBox Style="{StaticResource CompactCheckBox}" Content="Follow symbolic links" IsChecked="{Binding FollowSymlinks, Mode=TwoWay}" />
+                                <CheckBox Style="{StaticResource CompactCheckBox}" Content="Skip binary files" IsChecked="{Binding SkipBinaryFiles, Mode=TwoWay}" />
+                            </StackPanel>
+                        </Grid>
+                        </StackPanel>
+                    </ScrollViewer>
                 </Border>
             </Grid>
         </Grid>
 
         <!-- Footer -->
         <Grid Grid.Row="3">
-            <Button Content="Reset everything…" Click="OnResetEverythingClicked" HorizontalAlignment="Left"
-                    ToolTipService.ToolTip="Erase all settings, presets, and recent values" />
+            <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Left">
+                <Button Content="Reset everything…" Click="OnResetEverythingClicked"
+                        ToolTipService.ToolTip="Erase all settings, presets, and recent values" />
+                <Button Content="Export settings…" Click="OnExportSettingsClicked"
+                        ToolTipService.ToolTip="Save settings, presets, and recents to a .reg file" />
+                <Button Content="Import settings…" Click="OnImportSettingsClicked"
+                        ToolTipService.ToolTip="Replace all current Locate settings with the contents of a .reg file" />
+            </StackPanel>
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="6">
-                <Button Content="Save" Click="OnSaveClicked" Style="{ThemeResource AccentButtonStyle}" />
-                <Button Content="Close" Click="OnCloseClicked" />
+                <Button Content="Cancel" Click="OnCancelClicked"
+                        ToolTipService.ToolTip="Discard all changes (including preset edits) and close — same as Esc or the X button" />
+                <Button Content="Save" Click="OnSaveClicked" Style="{ThemeResource AccentButtonStyle}"
+                        ToolTipService.ToolTip="Save changes and close" />
             </StackPanel>
         </Grid>
     </Grid>

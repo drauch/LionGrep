@@ -249,7 +249,11 @@ public sealed partial class MainWindow : Window
     // ---- Top-bar buttons ----
     private void OnSettingsClicked(object sender, RoutedEventArgs e)
     {
-        var window = new SettingsWindow(_windowHandle);
+        // Capture the current form so the user can click "Add" inside Settings and get a preset
+        // pre-populated from what they're looking at. Settings is modal, so the snapshot is stable
+        // while the dialog is open.
+        var template = ViewModel.SnapshotAsPreset(name: "");
+        var window = new SettingsWindow(_windowHandle, template);
         window.Closed += (_, _) =>
         {
             ViewModel.ReloadPresets();
@@ -842,22 +846,20 @@ public sealed partial class MainWindow : Window
             AcceptsReturn = false,
             FontSize = 12,
             BorderThickness = new Thickness(2),
-            Padding = new Thickness(10, 5, 72, 5),    // right pad so typed text doesn't run under the Assign button
+            Padding = new Thickness(38, 5, 10, 5),    // left pad so typed text doesn't run under the (left-aligned) capture button
         };
         var hotkeyError = new TextBlock { Foreground = redBrush, FontSize = 11, Visibility = Visibility.Collapsed };
 
+        // Icon-only — clicking is optional, the textbox accepts typed input directly too.
         var assignBtn = new Button
         {
             Style = (Style)Application.Current.Resources["SmallButton"],
-            HorizontalAlignment = HorizontalAlignment.Right,
+            HorizontalAlignment = HorizontalAlignment.Left,
             VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(0, 0, 4, 0),
+            Margin = new Thickness(4, 0, 0, 0),
+            Content = new FontIcon { Glyph = "", FontSize = 11 },   // keyboard glyph
         };
-        var assignContent = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
-        assignContent.Children.Add(new FontIcon { Glyph = "", FontSize = 10 });
-        assignContent.Children.Add(new TextBlock { Text = "Assign" });
-        assignBtn.Content = assignContent;
-        ToolTipService.SetToolTip(assignBtn, "Press a hotkey to capture it");
+        ToolTipService.SetToolTip(assignBtn, "Press a key combination to capture it");
 
         var hotkeyGrid = new Grid();
         hotkeyGrid.Children.Add(hotkeyBox);

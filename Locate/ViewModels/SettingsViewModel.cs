@@ -14,11 +14,16 @@ public partial class SettingsViewModel : ObservableObject
 {
     private readonly SettingsStore _settingsStore;
     private readonly PresetsStore _presetsStore;
+    private readonly Preset? _addTemplate;
 
-    public SettingsViewModel(SettingsStore settingsStore, PresetsStore presetsStore)
+    /// <param name="addTemplate">A snapshot of the main window's current form to use as the
+    /// starting point when the user clicks Add. Pass <c>null</c> when no main form is available
+    /// (Settings opened from a context where capturing it isn't meaningful).</param>
+    public SettingsViewModel(SettingsStore settingsStore, PresetsStore presetsStore, Preset? addTemplate = null)
     {
         _settingsStore = settingsStore;
         _presetsStore = presetsStore;
+        _addTemplate = addTemplate;
 
         var settings = _settingsStore.Load();
         _editorCommand = settings.EditorCommand;
@@ -47,10 +52,49 @@ public partial class SettingsViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(SelectedPresetHotkeyError))]
     [NotifyPropertyChangedFor(nameof(SelectedPresetHotkeyErrorVisibility))]
     [NotifyPropertyChangedFor(nameof(SelectedPresetHotkeyBorderBrush))]
+    [NotifyPropertyChangedFor(nameof(PresetSizeValueVisibility))]
+    [NotifyPropertyChangedFor(nameof(PresetSizeUpperVisibility))]
+    [NotifyPropertyChangedFor(nameof(PresetDateFromVisibility))]
+    [NotifyPropertyChangedFor(nameof(PresetDateToVisibility))]
+    [NotifyPropertyChangedFor(nameof(PresetSearchPatternBorderBrush))]
+    [NotifyPropertyChangedFor(nameof(PresetFileNamesBorderBrush))]
+    [NotifyPropertyChangedFor(nameof(PresetExcludePathsBorderBrush))]
     [NotifyCanExecuteChangedFor(nameof(RemovePresetCommand))]
     private Preset? _selectedPreset;
 
     public bool HasSelectedPreset => SelectedPreset is not null;
+
+    // ---- Size / Date control visibility (mirrors MainViewModel.Size/DateXxxVisibility) ----
+    //
+    // Size:  0 = All sizes (no boxes), 1/2 = Less/Greater than (lower box only), 3 = Between (both).
+    // Date:  0 = All dates  (no pickers), 1/2/3 = Newer/Older/Exactly (from only), 4 = Between (both).
+
+    public Visibility PresetSizeValueVisibility => SelectedPreset?.SizeModeIndex > 0 ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility PresetSizeUpperVisibility => SelectedPreset?.SizeModeIndex == 3 ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility PresetDateFromVisibility => SelectedPreset?.DateModeIndex > 0 ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility PresetDateToVisibility => SelectedPreset?.DateModeIndex == 4 ? Visibility.Visible : Visibility.Collapsed;
+
+    // ---- Regex validation (mirrors MainViewModel's red-border treatment) ----
+    //
+    // Each regex-toggle pair (SearchPattern + UseRegex, FileNames + FileNamesRegex,
+    // ExcludePaths + ExcludePathsRegex) flips red when the regex is on AND the pattern doesn't
+    // compile. Pure-text patterns are never flagged — empty too is fine.
+
+    public Brush? PresetSearchPatternBorderBrush => IsInvalidRegex(SelectedPreset?.SearchPattern, SelectedPreset?.UseRegex) ? InvalidInputBrush : null;
+    public Brush? PresetFileNamesBorderBrush => IsInvalidRegex(SelectedPreset?.FileNames, SelectedPreset?.FileNamesRegex) ? InvalidInputBrush : null;
+    public Brush? PresetExcludePathsBorderBrush => IsInvalidRegex(SelectedPreset?.ExcludePaths, SelectedPreset?.ExcludePathsRegex) ? InvalidInputBrush : null;
+
+    private static bool IsInvalidRegex(string? pattern, bool? useRegex)
+    {
+        if (useRegex != true || string.IsNullOrEmpty(pattern)) return false;
+        try
+        {
+            _ = new System.Text.RegularExpressions.Regex(pattern,
+                System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+            return false;
+        }
+        catch (System.ArgumentException) { return true; }
+    }
 
     private static readonly SolidColorBrush InvalidInputBrush = new(Microsoft.UI.Colors.IndianRed);
 
@@ -144,17 +188,38 @@ public partial class SettingsViewModel : ObservableObject
 
     private void OnSelectedPresetPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(Preset.Name))
+        switch (e.PropertyName)
         {
-            OnPropertyChanged(nameof(SelectedPresetNameError));
-            OnPropertyChanged(nameof(SelectedPresetNameErrorVisibility));
-            OnPropertyChanged(nameof(SelectedPresetNameBorderBrush));
-        }
-        if (e.PropertyName == nameof(Preset.Hotkey))
-        {
-            OnPropertyChanged(nameof(SelectedPresetHotkeyError));
-            OnPropertyChanged(nameof(SelectedPresetHotkeyErrorVisibility));
-            OnPropertyChanged(nameof(SelectedPresetHotkeyBorderBrush));
+            case nameof(Preset.Name):
+                OnPropertyChanged(nameof(SelectedPresetNameError));
+                OnPropertyChanged(nameof(SelectedPresetNameErrorVisibility));
+                OnPropertyChanged(nameof(SelectedPresetNameBorderBrush));
+                break;
+            case nameof(Preset.Hotkey):
+                OnPropertyChanged(nameof(SelectedPresetHotkeyError));
+                OnPropertyChanged(nameof(SelectedPresetHotkeyErrorVisibility));
+                OnPropertyChanged(nameof(SelectedPresetHotkeyBorderBrush));
+                break;
+            case nameof(Preset.SizeModeIndex):
+                OnPropertyChanged(nameof(PresetSizeValueVisibility));
+                OnPropertyChanged(nameof(PresetSizeUpperVisibility));
+                break;
+            case nameof(Preset.DateModeIndex):
+                OnPropertyChanged(nameof(PresetDateFromVisibility));
+                OnPropertyChanged(nameof(PresetDateToVisibility));
+                break;
+            case nameof(Preset.SearchPattern):
+            case nameof(Preset.UseRegex):
+                OnPropertyChanged(nameof(PresetSearchPatternBorderBrush));
+                break;
+            case nameof(Preset.FileNames):
+            case nameof(Preset.FileNamesRegex):
+                OnPropertyChanged(nameof(PresetFileNamesBorderBrush));
+                break;
+            case nameof(Preset.ExcludePaths):
+            case nameof(Preset.ExcludePathsRegex):
+                OnPropertyChanged(nameof(PresetExcludePathsBorderBrush));
+                break;
         }
     }
 
@@ -171,10 +236,14 @@ public partial class SettingsViewModel : ObservableObject
     [RelayCommand]
     private void AddPreset()
     {
-        var preset = new Preset { Name = "New preset" };
+        // No SavePresets here on purpose — Settings now follows OK/Cancel semantics: nothing
+        // touches the registry until the user clicks Save. Cancel just closes and the in-memory
+        // Add/Remove/Edit work is dropped on the floor.
+        var preset = _addTemplate is null
+            ? new Preset { Name = "New preset", ApplyWhere = true, ApplyWhat = true, ApplyFilter = true }
+            : CloneAsNewPreset(_addTemplate);
         Presets.Add(preset);
         SelectedPreset = preset;
-        SavePresets();
     }
 
     [RelayCommand(CanExecute = nameof(HasSelectedPreset))]
@@ -183,8 +252,46 @@ public partial class SettingsViewModel : ObservableObject
         if (SelectedPreset is null) return;
         Presets.Remove(SelectedPreset);
         SelectedPreset = null;
-        SavePresets();
+        // No SavePresets — see AddPreset comment.
     }
+
+    /// <summary>Clones the captured snapshot into a brand-new preset, with a sensible default
+    /// name and all three Apply checkboxes ticked so the preset reproduces the current form
+    /// when activated. Hotkey starts empty — uniqueness validation would otherwise duplicate
+    /// whatever the snapshot happened to carry.</summary>
+    private static Preset CloneAsNewPreset(Preset src) => new()
+    {
+        Name = "New preset",
+        Hotkey = null,
+        ApplyWhere = true,
+        ApplyWhat = true,
+        ApplyFilter = true,
+        SearchIn = src.SearchIn,
+        SearchPattern = src.SearchPattern,
+        ReplacePattern = src.ReplacePattern,
+        UseRegex = src.UseRegex,
+        CaseSensitive = src.CaseSensitive,
+        WholeWord = src.WholeWord,
+        PreserveCase = src.PreserveCase,
+        DotMatchesNewline = src.DotMatchesNewline,
+        SearchInNames = src.SearchInNames,
+        KeepFileDate = src.KeepFileDate,
+        SkipBinaryFiles = src.SkipBinaryFiles,
+        FileNames = src.FileNames,
+        FileNamesRegex = src.FileNamesRegex,
+        ExcludePaths = src.ExcludePaths,
+        ExcludePathsRegex = src.ExcludePathsRegex,
+        SizeModeIndex = src.SizeModeIndex,
+        SizeKb = src.SizeKb,
+        SizeKbUpper = src.SizeKbUpper,
+        DateModeIndex = src.DateModeIndex,
+        DateFrom = src.DateFrom,
+        DateTo = src.DateTo,
+        IncludeSubfolders = src.IncludeSubfolders,
+        IncludeSystem = src.IncludeSystem,
+        IncludeHidden = src.IncludeHidden,
+        FollowSymlinks = src.FollowSymlinks,
+    };
 
     public void SaveAll()
     {
