@@ -46,7 +46,7 @@ public class ReplaceTests
 
         Assert.That(File.ReadAllText(Path.Combine(_isolatedDir, "a.cs")), Is.EqualTo("OMEGA bravo OMEGA\n"));
         Assert.That(File.ReadAllText(Path.Combine(_isolatedDir, "b.cs")), Is.EqualTo("OMEGA charlie\n"));
-        Assert.That(File.Exists(Path.Combine(_isolatedDir, "a.cs.bak")), Is.False, "Bypass route must not write .bak files.");
+        Assert.That(File.Exists(Path.Combine(_isolatedDir, "a.cs.lgbak")), Is.False, "Bypass route must not write backup files.");
     }
 
     [Test]
@@ -69,11 +69,11 @@ public class ReplaceTests
     }
 
     [Test]
-    public void Undo_WhenBakIsMissing_ReportsFailedCount()
+    public void Undo_WhenBackupIsMissing_ReportsFailedCount()
     {
-        // R14 — Undo's "failed++" path is exercised when the user manually deletes a .bak between
-        // the replace and the undo. Verify the summary acknowledges the failure rather than
-        // silently restoring zero files.
+        // R14 — Undo's "failed++" path is exercised when the user manually deletes a backup file
+        // between the replace and the undo. Verify the summary acknowledges the failure rather
+        // than silently restoring zero files.
         var replaceBtn = _driver.ButtonByContent("Replace…");
         replaceBtn.Invoke();
         Thread.Sleep(400);
@@ -83,8 +83,8 @@ public class ReplaceTests
         primary!.AsButton().Invoke();
         Thread.Sleep(800);
 
-        // Sabotage: delete the .bak files we just wrote.
-        foreach (var bak in Directory.GetFiles(_isolatedDir, "*.bak"))
+        // Sabotage: delete the backup files we just wrote.
+        foreach (var bak in Directory.GetFiles(_isolatedDir, "*.lgbak"))
             File.Delete(bak);
 
         _driver.ButtonByContent("Undo").Invoke();
@@ -92,11 +92,11 @@ public class ReplaceTests
 
         var summary = _driver.ReadResultsSummary();
         Assert.That(summary, Does.Contain("failed").IgnoreCase,
-            "Undo summary should mention the .bak-missing failures, not silently report 0 restored.");
+            "Undo summary should mention the missing-backup failures, not silently report 0 restored.");
     }
 
     [Test]
-    public void ReplaceWithBackups_WritesBakFiles_AndUndoRestoresThem()
+    public void ReplaceWithBackups_WritesBackupFiles_AndUndoRestoresThem()
     {
         var originalA = File.ReadAllText(Path.Combine(_isolatedDir, "a.cs"));
 
@@ -112,15 +112,15 @@ public class ReplaceTests
         primary!.AsButton().Invoke();
         Thread.Sleep(800);
 
-        // After replace: contents changed AND .bak files exist.
+        // After replace: contents changed AND backup files exist.
         Assert.That(File.ReadAllText(Path.Combine(_isolatedDir, "a.cs")), Is.Not.EqualTo(originalA));
-        Assert.That(File.Exists(Path.Combine(_isolatedDir, "a.cs.bak")), Is.True);
+        Assert.That(File.Exists(Path.Combine(_isolatedDir, "a.cs.lgbak")), Is.True);
 
-        // Undo restores from the .bak.
+        // Undo restores from the backup file.
         _driver.ButtonByContent("Undo").Invoke();
         Thread.Sleep(800);
 
         Assert.That(File.ReadAllText(Path.Combine(_isolatedDir, "a.cs")), Is.EqualTo(originalA));
-        Assert.That(File.Exists(Path.Combine(_isolatedDir, "a.cs.bak")), Is.False, "Undo deletes the .bak after restoring.");
+        Assert.That(File.Exists(Path.Combine(_isolatedDir, "a.cs.lgbak")), Is.False, "Undo deletes the backup file after restoring.");
     }
 }

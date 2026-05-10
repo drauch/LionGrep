@@ -350,7 +350,7 @@
                     <SplitButton x:Name="ReplaceSplit" Click="OnReplaceSplitClicked"
                                  IsEnabled="{x:Bind ViewModel.IsReplaceEnabled, Mode=OneWay}"
                                  Visibility="{x:Bind ViewModel.ReplaceButtonVisibility, Mode=OneWay}"
-                                 ToolTipService.ToolTip="Choose Replace, Replace with backups (.bak), or Cancel (Ctrl+Alt+Enter)">
+                                 ToolTipService.ToolTip="Choose Replace, Replace with backups, or Cancel (Ctrl+Alt+Enter)">
                         <SplitButton.Content>
                             <StackPanel Orientation="Horizontal" Spacing="4">
                                 <FontIcon Glyph="&#xE74E;" FontSize="12" />
@@ -360,7 +360,7 @@
                         <SplitButton.Flyout>
                             <MenuFlyout>
                                 <MenuFlyoutItem Text="Replace with backups" Click="OnReplaceWithBackupsMenuClicked"
-                                                ToolTipService.ToolTip="Write a .bak copy next to each modified file (use Undo to restore)" />
+                                                ToolTipService.ToolTip="Write a backup copy next to each modified file (use Undo to restore)" />
                                 <MenuFlyoutItem Text="Replace without backups" Click="OnReplaceWithoutBackupsMenuClicked"
                                                 ToolTipService.ToolTip="Overwrite in place. Cannot be undone." />
                             </MenuFlyout>
@@ -375,7 +375,7 @@
                         </StackPanel>
                     </Button>
                     <Button Command="{x:Bind ViewModel.UndoReplaceCommand}"
-                            ToolTipService.ToolTip="Undo the last Replace-with-backups by restoring the .bak files">
+                            ToolTipService.ToolTip="Undo the last Replace-with-backups by restoring the backup files">
                         <StackPanel Orientation="Horizontal" Spacing="4">
                             <FontIcon Glyph="&#xE7A7;" FontSize="12" />
                             <TextBlock Text="Undo" />

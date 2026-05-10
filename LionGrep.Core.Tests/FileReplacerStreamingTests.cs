@@ -266,16 +266,16 @@ public class FileReplacerStreamingTests
     // ---- backup ----
 
     [Test]
-    public void StreamingPath_CreateBackup_WritesBakWithOriginalContent()
+    public void StreamingPath_CreateBackup_WritesBackupWithOriginalContent()
     {
         var path = WriteOverThreshold("bak.txt", "alpha needle omega\n");
         var originalBytes = File.ReadAllBytes(path);
 
         var result = _replacer.Replace(path, Ctx("needle", "X", createBackup: true));
 
-        Assert.That(result.BackupPath, Is.EqualTo(path + ".bak"));
+        Assert.That(result.BackupPath, Is.EqualTo(path + ".lgbak"));
         Assert.That(File.ReadAllBytes(result.BackupPath!), Is.EqualTo(originalBytes),
-            ".bak must hold the pre-replace content byte-for-byte");
+            "backup file must hold the pre-replace content byte-for-byte");
     }
 
     // ---- cancellation ----

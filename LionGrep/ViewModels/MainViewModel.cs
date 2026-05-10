@@ -662,12 +662,14 @@ public partial class MainViewModel : ObservableObject
         var ct = _replaceCts.Token;
         try
         {
+            var backupExt = SettingsStore.NormalizeBackupExtension(_settingsStore.Load().BackupExtension);
             var ctx = new ReplacementContext(
                 Search: BuildSearchOptions(),
                 Replacement: ReplacePattern,
                 PreserveCase: PreserveCase,
                 KeepFileDate: KeepFileDate,
-                CreateBackup: withBackups);
+                CreateBackup: withBackups,
+                BackupExtension: backupExt);
 
             // Atomic counters because Parallel.ForEachAsync workers race to update them.
             long totalReplacements = 0;
@@ -710,7 +712,7 @@ public partial class MainViewModel : ObservableObject
 
             if (withBackups)
             {
-                // Each new backup-replace replaces the undo set, so a previous replace's .bak files become orphaned;
+                // Each new backup-replace replaces the undo set, so a previous replace's backups become orphaned;
                 // they remain on disk for safety but can no longer be undone via the UI.
                 _lastBackups.Clear();
                 _lastBackups.AddRange(newBackups);
@@ -718,7 +720,7 @@ public partial class MainViewModel : ObservableObject
             }
 
             var suffix = withBackups
-                ? $" (backed up {newBackups.Count:N0} file(s) to .bak)"
+                ? $" (backed up {newBackups.Count:N0} file(s) to .{backupExt})"
                 : "";
             SetSummary($"Replaced {totalReplacements:N0} matches in {filesChanged:N0} files{suffix}.");
         }
@@ -784,7 +786,7 @@ public partial class MainViewModel : ObservableObject
             _lastBackups.Clear();
             HasUndoableBackups = false;
             var failSuffix = failed > 0 ? $" ({failed:N0} failed)" : "";
-            SetSummary($"Undo: restored {restored:N0} files from .bak{failSuffix}.");
+            SetSummary($"Undo: restored {restored:N0} files from backup{failSuffix}.");
         }
         catch (Exception ex)
         {

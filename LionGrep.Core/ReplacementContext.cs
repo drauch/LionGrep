@@ -5,6 +5,7 @@ public sealed record ReplacementContext(
     string Replacement,
     bool PreserveCase = false,
     bool KeepFileDate = false,
-    bool CreateBackup = false);
+    bool CreateBackup = false,
+    string BackupExtension = "lgbak");
 
 public sealed record ReplaceResult(string Path, int ReplacementCount, string? BackupPath = null);

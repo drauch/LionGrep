@@ -1096,7 +1096,7 @@ public sealed partial class MainWindow : Window
             Title = "Confirm replace",
             Content = $"Replace will rewrite {ViewModel.FilteredResults.Count:N0} file(s) on disk."
                     + Environment.NewLine + Environment.NewLine
-                    + "• Replace with backups: writes a .bak copy next to each modified file (use Undo to restore)."
+                    + "• Replace with backups: writes a backup copy next to each modified file (use Undo to restore)."
                     + Environment.NewLine
                     + "• Replace w/o backups: overwrites in place. Cannot be undone.",
             PrimaryButtonText = "Replace with backups",

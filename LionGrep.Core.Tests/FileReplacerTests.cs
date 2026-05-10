@@ -238,7 +238,7 @@ public class FileReplacerTests
     }
 
     [Test]
-    public void CreateBackup_WritesBakWithOriginalContent_AndReturnsItsPath()
+    public void CreateBackup_WritesBackupWithOriginalContent_AndReturnsItsPath()
     {
         var original = "alpha bravo alpha\n";
         var path = Write("a.txt", Encoding.UTF8.GetBytes(original));
@@ -247,14 +247,14 @@ public class FileReplacerTests
         var result = _replacer.Replace(path, ctx);
 
         Assert.That(result.ReplacementCount, Is.EqualTo(2));
-        Assert.That(result.BackupPath, Is.EqualTo(path + ".bak"));
+        Assert.That(result.BackupPath, Is.EqualTo(path + ".lgbak"));
         Assert.That(File.Exists(result.BackupPath), Is.True);
         Assert.That(File.ReadAllText(result.BackupPath!), Is.EqualTo(original));
         Assert.That(File.ReadAllText(path), Is.EqualTo("X bravo X\n"));
     }
 
     [Test]
-    public void CreateBackup_WithNoMatches_DoesNotCreateBakFile()
+    public void CreateBackup_WithNoMatches_DoesNotCreateBackupFile()
     {
         var path = Write("b.txt", "no relevant content here\n"u8.ToArray());
         var ctx = Ctx("missing", "X") with { CreateBackup = true };
@@ -263,7 +263,21 @@ public class FileReplacerTests
 
         Assert.That(result.ReplacementCount, Is.EqualTo(0));
         Assert.That(result.BackupPath, Is.Null);
-        Assert.That(File.Exists(path + ".bak"), Is.False);
+        Assert.That(File.Exists(path + ".lgbak"), Is.False);
+    }
+
+    [Test]
+    public void CreateBackup_HonorsCustomExtension()
+    {
+        var original = "alpha bravo\n";
+        var path = Write("ext.txt", Encoding.UTF8.GetBytes(original));
+        var ctx = Ctx("alpha", "X") with { CreateBackup = true, BackupExtension = "bak" };
+
+        var result = _replacer.Replace(path, ctx);
+
+        Assert.That(result.BackupPath, Is.EqualTo(path + ".bak"));
+        Assert.That(File.Exists(path + ".bak"), Is.True);
+        Assert.That(File.Exists(path + ".lgbak"), Is.False);
     }
 
     [Test]
@@ -297,7 +311,7 @@ public class FileReplacerTests
     }
 
     [Test]
-    public void CreateBackup_PreservesOriginalMtime_OnTheBakFile()
+    public void CreateBackup_PreservesOriginalMtime_OnTheBackupFile()
     {
         var path = Write("c.txt", "needle here\n"u8.ToArray());
         var stamp = new DateTime(2020, 1, 2, 3, 4, 5, DateTimeKind.Utc);
@@ -307,7 +321,7 @@ public class FileReplacerTests
         var result = _replacer.Replace(path, ctx);
 
         Assert.That(result.BackupPath, Is.Not.Null);
-        // The .bak's mtime should equal the pre-replace mtime so Undo can restore it.
+        // The backup's mtime should equal the pre-replace mtime so Undo can restore it.
         Assert.That(File.GetLastWriteTimeUtc(result.BackupPath!), Is.EqualTo(stamp));
     }
 }

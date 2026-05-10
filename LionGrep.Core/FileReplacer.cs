@@ -64,7 +64,7 @@ public sealed class FileReplacer
         string? backupPath = null;
         if (context.CreateBackup)
         {
-            backupPath = path + ".bak";
+            backupPath = path + "." + context.BackupExtension;
             File.Copy(path, backupPath, overwrite: true);
         }
         WriteAtomicFromString(path, detected.Encoding, output, info, context.KeepFileDate);
@@ -87,7 +87,7 @@ public sealed class FileReplacer
         string? backupPath = null;
         if (context.CreateBackup)
         {
-            backupPath = path + ".bak";
+            backupPath = path + "." + context.BackupExtension;
             File.Copy(path, backupPath, overwrite: true);
         }
         WriteAtomicFromString(path, detected.Encoding, output, info, context.KeepFileDate);
@@ -149,7 +149,7 @@ public sealed class FileReplacer
             string? backupPath = null;
             if (context.CreateBackup)
             {
-                backupPath = path + ".bak";
+                backupPath = path + "." + context.BackupExtension;
                 File.Copy(path, backupPath, overwrite: true);
             }
 

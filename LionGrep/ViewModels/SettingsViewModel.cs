@@ -29,6 +29,7 @@ public partial class SettingsViewModel : ObservableObject
         _editorCommand = settings.EditorCommand;
         _dontWarnWhenReplacing = settings.DontWarnWhenReplacing;
         _rememberRecentValues = settings.RememberRecentValues;
+        _backupExtension = settings.BackupExtension;
 
         foreach (var p in _presetsStore.Load())
             Presets.Add(p);
@@ -43,6 +44,7 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private string _editorCommand = "";
     [ObservableProperty] private bool _dontWarnWhenReplacing;
     [ObservableProperty] private bool _rememberRecentValues = true;
+    [ObservableProperty] private string _backupExtension = AppSettings.DefaultBackupExtension;
 #pragma warning restore S3604
 
     public ObservableCollection<Preset> Presets { get; } = [];
@@ -306,6 +308,7 @@ public partial class SettingsViewModel : ObservableObject
             EditorCommand = EditorCommand,
             DontWarnWhenReplacing = DontWarnWhenReplacing,
             RememberRecentValues = RememberRecentValues,
+            BackupExtension = SettingsStore.NormalizeBackupExtension(BackupExtension),
             LastForm = existing.LastForm,
         });
         // If the user just turned off "remember recents", purge any stored history.
@@ -325,5 +328,6 @@ public partial class SettingsViewModel : ObservableObject
         EditorCommand = "";
         DontWarnWhenReplacing = false;
         RememberRecentValues = true;
+        BackupExtension = AppSettings.DefaultBackupExtension;
     }
 }

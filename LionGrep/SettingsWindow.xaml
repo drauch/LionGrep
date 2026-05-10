@@ -46,10 +46,23 @@
             </Grid>
             <TextBlock Opacity="0.7" FontSize="11"
                        Text="Placeholders: %path%, %line%, %column%. Quote %path% if it may contain spaces." />
-            <CheckBox Content="Don't warn when replacing (Replace button replaces immediately, no .bak; Ctrl+Alt+Enter behaves the same regardless)"
+            <CheckBox Content="Don't warn when replacing (Replace button replaces immediately, no backup file; Ctrl+Alt+Enter behaves the same regardless)"
                       IsChecked="{x:Bind ViewModel.DontWarnWhenReplacing, Mode=TwoWay}" Margin="0,4,0,0" />
             <CheckBox Content="Remember recently used values between sessions"
                       IsChecked="{x:Bind ViewModel.RememberRecentValues, Mode=TwoWay}" />
+            <Grid ColumnSpacing="6" Margin="0,4,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="120" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="Backup file extension:" VerticalAlignment="Center" FontSize="12" />
+                <TextBox Grid.Column="1"
+                         Text="{x:Bind ViewModel.BackupExtension, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                         PlaceholderText="lgbak" FontSize="12" />
+                <TextBlock Grid.Column="2" Opacity="0.7" FontSize="11" VerticalAlignment="Center"
+                           Text="Appended after the original file name when 'Replace with backups' runs (e.g. 'foo.cs' → 'foo.cs.lgbak')." />
+            </Grid>
         </StackPanel>
 
         <!-- Presets -->
