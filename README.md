@@ -1,8 +1,9 @@
-# LionGrep
+<h1>
+  <img src="LionGrep/Assets/Square44x44Logo.scale-200.png" alt="LionGrep logo" height="40" align="left" />
+  &nbsp;LionGrep
+</h1>
 
-**A fast, predictable grep & replace tool for Windows.**
-
-LionGrep is a UI-driven search & replace tool built on .NET 10 + WinUI 3, targeting **ripgrep-class throughput** without leaving the desktop. It's the tool to reach for when grepWin is too slow and `rg` is too much hassle.
+**A UI-powered grep-like search tool for Windows. Built on .NET 10 and WinUI 3.**
 
 **Current version:** 1.0
 
@@ -10,7 +11,7 @@ LionGrep is a UI-driven search & replace tool built on .NET 10 + WinUI 3, target
 
 ## Highlights
 
-- **Fast.** Memory-mapped I/O, SIMD-vectorized byte search over UTF-8, per-file parallelism, and ripgrep-style required-literal extraction for regex queries. On real corpora, comparable to `rg` — and much faster than grepWin.
+- **Fast.** Memory-mapped I/O, SIMD-vectorized byte search over UTF-8, per-file parallelism, and ripgrep-style required-literal extraction for regex queries. On real corpora, comparable to `rg`.
 - **Any file size.** Files above 2 GiB stream through a chunked search path (newline-aligned 64 MiB windows); files above 4 MiB stream through replace via a sibling temp + atomic rename. No silent skipping for big files.
 - **Three-section form: Where / What / Filter.** Each section snapshots into a **preset** (with hotkey support); presets compose so you can mix a saved root with a saved filter.
 - **Live filter on results.** Narrow the result set without re-running the search; every export, copy, and replace respects the current filter.
@@ -18,7 +19,6 @@ LionGrep is a UI-driven search & replace tool built on .NET 10 + WinUI 3, target
 - **Right-click results menu** — Open in editor / Open with… / Open containing folder / Cut / Copy / Copy paths / Copy filenames / Copy lines / Copy as CSV / Delete (Recycle Bin) / Properties.
 - **Excel + CSV export.** Real `.xlsx` via ClosedXML, RFC-4180 CSV.
 - **Inverse search** and **search-in-currently-found-files** for two-pass refinement.
-- **Sandboxable.** `--alternate-registry-key` redirects all persisted state for testing or demos.
 
 ---
 
@@ -37,7 +37,7 @@ LionGrep is a UI-driven search & replace tool built on .NET 10 + WinUI 3, target
 4. Press **Ctrl+Enter**.
 5. Double-click any result to open it in your editor (configure under the gear icon).
 
-Press **Ctrl+Alt+Enter** to rewrite matches on disk. The first time, you'll get a three-way confirmation dialog: **Replace with backups** (creates `.bak` files, undoable), **Replace** (in place, no undo), or **Cancel**.
+Press **Ctrl+Alt+Enter** to rewrite matches on disk.
 
 ---
 
@@ -65,3 +65,11 @@ See [DEVELOPMENT.md](DEVELOPMENT.md) for everything else.
 
 - Windows 10 1809 (build 17763) or newer.
 - For development: .NET 10 SDK and the Windows App SDK workload.
+
+---
+
+## Developer & License
+
+Developed by **Dominik Rauch** (<dominik.rauch@signpath.io>).
+
+Licensed under the **GNU Affero General Public License v3.0** — see [LICENSE.md](LICENSE.md).
