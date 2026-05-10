@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using Locate.Controls;
 using Locate.Services;
 using Locate.ViewModels;
 using Microsoft.UI.Xaml;
@@ -20,7 +21,9 @@ public sealed partial class SettingsWindow : Window
     {
         ViewModel = new SettingsViewModel(new SettingsStore(), new PresetsStore());
         InitializeComponent();
-        AppWindow.Resize(new SizeInt32(820, 600));
+        // Bumped from 820×600 so the preset details panel — name, hotkey, three apply-group
+        // checkboxes, and the explanatory caption — fits without a scrollbar at default DPI.
+        AppWindow.Resize(new SizeInt32(1040, 720));
 
         // Disable the owner so this window behaves modally — clicks on the owner are eaten until
         // the user closes Settings. Re-enable when we close. Mirrors the ContentDialog UX of the
@@ -76,6 +79,14 @@ public sealed partial class SettingsWindow : Window
 
     [DllImport("user32.dll")]
     private static extern bool SetForegroundWindow(nint hWnd);
+
+    private async void OnAssignHotkeyClicked(object sender, RoutedEventArgs e)
+    {
+        if (ViewModel.SelectedPreset is null) return;
+        var captured = await HotkeyCaptureDialog.CaptureAsync(Content.XamlRoot);
+        if (captured is not null)
+            ViewModel.SelectedPreset.Hotkey = captured;
+    }
 
     private async void OnResetEverythingClicked(object sender, RoutedEventArgs e)
     {

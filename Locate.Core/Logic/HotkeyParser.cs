@@ -21,9 +21,21 @@ public static class HotkeyParser
     public readonly record struct ParsedHotkey(int VirtualKeyCode, Modifier Modifiers);
 
     // VK_* values (https://learn.microsoft.com/en-us/windows/win32/inputdev/virtual-key-codes).
+    private const int VkReturn  = 0x0D;
     private const int VkNumber0 = 0x30;
     private const int VkA       = 0x41;
     private const int VkF1      = 0x70;
+
+    /// <summary>Returns true if <paramref name="hotkey"/> resolves to a combination Locate already
+    /// uses for a built-in action (currently Ctrl+Enter for Search and Ctrl+Alt+Enter for Replace).
+    /// Preset hotkey assignment must reject these so the built-ins keep working.</summary>
+    public static bool IsReserved(string? hotkey)
+        => TryParse(hotkey, out var parsed) && IsReserved(parsed);
+
+    public static bool IsReserved(ParsedHotkey parsed) =>
+        parsed.VirtualKeyCode == VkReturn && (
+            parsed.Modifiers == Modifier.Control ||
+            parsed.Modifiers == (Modifier.Control | Modifier.Alt));
 
     public static bool TryParse(string? hotkey, out ParsedHotkey result)
     {
@@ -70,6 +82,8 @@ public static class HotkeyParser
         {
             return VkF1 + (fn - 1);
         }
+        var lower = token.ToLowerInvariant();
+        if (lower is "enter" or "return") return VkReturn;
         return 0;
     }
 }

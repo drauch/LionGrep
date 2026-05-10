@@ -35,4 +35,40 @@ public class HotkeyParserTests
     {
         Assert.That(HotkeyParser.TryParse(input, out _), Is.False);
     }
+
+    [TestCase("Enter",          0x0D)]
+    [TestCase("enter",          0x0D)]
+    [TestCase("Return",         0x0D)]
+    [TestCase("ctrl+enter",     0x0D)]
+    public void Parses_EnterAndReturn(string input, int expectedVk)
+    {
+        Assert.That(HotkeyParser.TryParse(input, out var parsed), Is.True);
+        Assert.That(parsed.VirtualKeyCode, Is.EqualTo(expectedVk));
+    }
+
+    // ---- IsReserved: Ctrl+Enter (Search) and Ctrl+Alt+Enter (Replace) are off-limits to presets ----
+
+    [TestCase("Ctrl+Enter")]
+    [TestCase("ctrl+enter")]
+    [TestCase("control+return")]
+    [TestCase("Ctrl+Alt+Enter")]
+    [TestCase("Alt+Ctrl+Enter")]    // modifier order shouldn't matter — both must reject
+    [TestCase("Ctrl+Alt+Return")]
+    public void IsReserved_BlocksBuiltInBindings(string input)
+    {
+        Assert.That(HotkeyParser.IsReserved(input), Is.True);
+    }
+
+    [TestCase("Ctrl+1")]
+    [TestCase("F2")]
+    [TestCase("Alt+Enter")]            // not reserved (Replace requires Ctrl)
+    [TestCase("Shift+Enter")]
+    [TestCase("Ctrl+Shift+Enter")]     // not reserved (Replace is exactly Ctrl+Alt+Enter)
+    [TestCase("Ctrl+Shift+F")]
+    [TestCase("")]                     // empty input — not reserved (and not parseable either)
+    [TestCase(null)]
+    public void IsReserved_LetsEverythingElseThrough(string? input)
+    {
+        Assert.That(HotkeyParser.IsReserved(input), Is.False);
+    }
 }

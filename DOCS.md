@@ -300,12 +300,14 @@ While the form is collapsed, the **window title** mirrors the running search sta
 
 A preset captures a subset of the form's three groups (**Where**, **What**, **Filter**) and can be re-applied via the Presets dropdown or a hotkey.
 
-- **Save current as preset…** — snapshots the current form. The three "apply group" checkboxes are pre-ticked for whichever groups you've changed from defaults. You can edit those flags in Settings.
-- **Edit…** — opens the Settings window's Presets section, where you can rename, delete, change which groups apply, or assign a hotkey.
+- **Save current as preset…** — opens a dialog with the preset's **name**, an optional **hotkey**, and the three **apply-group checkboxes** all in one place. The checkboxes are pre-ticked for whichever groups you've changed from defaults; you can override before saving.
+- **Edit…** — opens the Settings window's Presets section, where you can rename, delete, change which groups apply, or assign / change a hotkey at any time.
 
 Activating a preset fills only the *checked* groups; unchecked groups are left untouched. So presets compose: apply a "Where: my source tree" preset followed by a "Filter: my exclusions" preset.
 
-**Hotkeys**: assign per-preset in Settings, e.g. `Ctrl+1`, `Ctrl+Shift+F`, `Alt+F2`. Active in-app whenever Locate has focus. Global system-wide hotkeys are a v1.1 item.
+**Hotkeys**: assign per-preset, e.g. `Ctrl+1`, `Ctrl+Shift+F`, `Alt+F2`. Active in-app whenever Locate has focus. The Hotkey field has a small **Assign** button — click it and the next key combination you press is captured directly (no typing the literal "Ctrl+Shift+F2"). **`Ctrl+Enter` and `Ctrl+Alt+Enter` are reserved** for Search and Replace and are rejected with a red message in both the save-preset dialog and Settings. Global system-wide hotkeys are a v1.1 item.
+
+**Validation**: each preset must have a **non-empty, case-insensitive unique name** and a **unique hotkey** across all presets. Conflicts are flagged with a red border and an inline message; you can't save a preset that violates either rule.
 
 The form's last successful state is also auto-restored on next launch (a "last form" implicit preset persisted in the registry under `HKCU\Software\Locate\Settings\LastForm`).
 

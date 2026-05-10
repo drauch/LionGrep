@@ -1,4 +1,5 @@
 using System.Text;
+using Locate.Controls;
 using Locate.Core.Logic;
 using Locate.Models;
 using Locate.Services;
@@ -825,27 +826,148 @@ public sealed partial class MainWindow : Window
 
     private async Task SaveCurrentAsPresetAsync()
     {
-        var input = new TextBox { PlaceholderText = "Preset name", AcceptsReturn = false };
+        // Capture the heuristic group flags from the current form (same logic SnapshotAsPreset uses
+        // by default) so the user sees sensible defaults but can override before saving.
+        var snapshot = ViewModel.SnapshotAsPreset(name: "");
+        var existing = _presetsStore.Load().ToList();
+
+        var redBrush = new SolidColorBrush(Microsoft.UI.Colors.IndianRed);
+
+        var nameBox = new TextBox { PlaceholderText = "Preset name", AcceptsReturn = false, FontSize = 12, BorderThickness = new Thickness(2) };
+        var nameError = new TextBlock { Foreground = redBrush, FontSize = 11, Visibility = Visibility.Collapsed };
+
+        var hotkeyBox = new TextBox
+        {
+            PlaceholderText = "e.g. Ctrl+1, Alt+F2  —  leave empty for none",
+            AcceptsReturn = false,
+            FontSize = 12,
+            BorderThickness = new Thickness(2),
+            Padding = new Thickness(10, 5, 72, 5),    // right pad so typed text doesn't run under the Assign button
+        };
+        var hotkeyError = new TextBlock { Foreground = redBrush, FontSize = 11, Visibility = Visibility.Collapsed };
+
+        var assignBtn = new Button
+        {
+            Style = (Style)Application.Current.Resources["SmallButton"],
+            HorizontalAlignment = HorizontalAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 4, 0),
+        };
+        var assignContent = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
+        assignContent.Children.Add(new FontIcon { Glyph = "", FontSize = 10 });
+        assignContent.Children.Add(new TextBlock { Text = "Assign" });
+        assignBtn.Content = assignContent;
+        ToolTipService.SetToolTip(assignBtn, "Press a hotkey to capture it");
+
+        var hotkeyGrid = new Grid();
+        hotkeyGrid.Children.Add(hotkeyBox);
+        hotkeyGrid.Children.Add(assignBtn);
+
+        var compact = (Style)Application.Current.Resources["CompactCheckBox"];
+        var whereBox = new CheckBox { Style = compact, Content = "Where  —  search-in directories", IsChecked = snapshot.ApplyWhere };
+        var whatBox = new CheckBox { Style = compact, Content = "What  —  search / replace patterns and matching toggles", IsChecked = snapshot.ApplyWhat };
+        var filterBox = new CheckBox { Style = compact, Content = "Filter  —  file names, exclude paths, size / date, traversal", IsChecked = snapshot.ApplyFilter };
+
+        var panel = new StackPanel { Spacing = 10, MinWidth = 480 };
+        var nameStack = new StackPanel { Spacing = 2 };
+        nameStack.Children.Add(nameBox);
+        nameStack.Children.Add(nameError);
+        panel.Children.Add(LabelledRow("Name:", nameStack));
+
+        var hotkeyStack = new StackPanel { Spacing = 2 };
+        hotkeyStack.Children.Add(hotkeyGrid);
+        hotkeyStack.Children.Add(hotkeyError);
+        panel.Children.Add(LabelledRow("Hotkey:", hotkeyStack));
+
+        panel.Children.Add(new TextBlock { Text = "Apply groups (which parts of the form this preset refills):", FontSize = 12, Margin = new Thickness(0, 4, 0, 0) });
+        panel.Children.Add(whereBox);
+        panel.Children.Add(whatBox);
+        panel.Children.Add(filterBox);
+
         var dialog = new ContentDialog
         {
             XamlRoot = Content.XamlRoot,
             Title = "Save current as preset",
-            Content = input,
+            Content = panel,
             PrimaryButtonText = "Save",
             CloseButtonText = "Cancel",
             DefaultButton = ContentDialogButton.Primary,
+            IsPrimaryButtonEnabled = false,    // off until a name is typed
         };
+
+        // Live validation against the existing preset list: name must be non-empty and unique
+        // (case-insensitive); hotkey must parse, not be reserved, and not collide with any other
+        // preset's hotkey. Empty hotkey is fine — it just means no keyboard activation.
+        void Revalidate()
+        {
+            var name = nameBox.Text?.Trim() ?? "";
+            string? nameErr = null;
+            if (string.IsNullOrEmpty(name))
+                nameErr = "Name is required.";
+            else if (existing.Any(p => string.Equals(p.Name?.Trim(), name, StringComparison.OrdinalIgnoreCase)))
+                nameErr = "Already used by another preset.";
+            nameError.Text = nameErr ?? "";
+            nameError.Visibility = nameErr is null ? Visibility.Collapsed : Visibility.Visible;
+            nameBox.BorderBrush = nameErr is null ? null : redBrush;
+
+            var hk = hotkeyBox.Text;
+            string? hkErr = null;
+            if (!string.IsNullOrWhiteSpace(hk))
+            {
+                if (HotkeyParser.IsReserved(hk)) hkErr = "Reserved by Locate (Search / Replace).";
+                else if (!HotkeyParser.TryParse(hk, out var parsed)) hkErr = "Not a valid hotkey (e.g. Ctrl+1, Alt+F2).";
+                else if (existing.Any(p => HotkeyParser.TryParse(p.Hotkey, out var other) && other == parsed))
+                    hkErr = "Already used by another preset.";
+            }
+            hotkeyError.Text = hkErr ?? "";
+            hotkeyError.Visibility = hkErr is null ? Visibility.Collapsed : Visibility.Visible;
+            hotkeyBox.BorderBrush = hkErr is null ? null : redBrush;
+
+            dialog.IsPrimaryButtonEnabled = nameErr is null && hkErr is null;
+        }
+        nameBox.TextChanged += (_, _) => Revalidate();
+        hotkeyBox.TextChanged += (_, _) => Revalidate();
+
+        assignBtn.Click += async (_, _) =>
+        {
+            var captured = await HotkeyCaptureDialog.CaptureAsync(Content.XamlRoot);
+            if (captured is not null) hotkeyBox.Text = captured;
+        };
+
+        nameBox.Focus(FocusState.Programmatic);
+        Revalidate();   // initial state — Name empty, dialog Save disabled
+
         var result = await dialog.ShowAsync();
         if (result != ContentDialogResult.Primary) return;
-        var name = input.Text?.Trim();
-        if (string.IsNullOrEmpty(name)) return;
+        var finalName = nameBox.Text?.Trim();
+        if (string.IsNullOrEmpty(finalName)) return;
 
-        var preset = ViewModel.SnapshotAsPreset(name);
-        var presets = _presetsStore.Load().ToList();
-        presets.Add(preset);
-        _presetsStore.Save(presets);
+        var preset = ViewModel.SnapshotAsPreset(finalName);
+        // Override the snapshot's heuristic flags with whatever the user actually checked.
+        preset.ApplyWhere = whereBox.IsChecked == true;
+        preset.ApplyWhat = whatBox.IsChecked == true;
+        preset.ApplyFilter = filterBox.IsChecked == true;
+        preset.Hotkey = string.IsNullOrWhiteSpace(hotkeyBox.Text) ? null : hotkeyBox.Text.Trim();
+
+        existing.Add(preset);
+        _presetsStore.Save(existing);
         ViewModel.ReloadPresets();
         RegisterPresetHotkeys();
+    }
+
+    /// <summary>Builds a two-column row (label + control) for the save-preset dialog. Kept inline
+    /// so the dialog construction stays readable as a flat StackPanel.</summary>
+    private static Grid LabelledRow(string label, FrameworkElement content)
+    {
+        var grid = new Grid { ColumnSpacing = 8 };
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(74) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        var lbl = new TextBlock { Text = label, FontSize = 12, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 6, 0, 0) };
+        Grid.SetColumn(lbl, 0);
+        Grid.SetColumn(content, 1);
+        grid.Children.Add(lbl);
+        grid.Children.Add(content);
+        return grid;
     }
 
     private void RegisterPresetHotkeys()
@@ -859,6 +981,10 @@ public sealed partial class MainWindow : Window
         foreach (var preset in ViewModel.Presets)
         {
             if (string.IsNullOrEmpty(preset.Hotkey)) continue;
+            // Belt-and-braces: reject Ctrl+Enter / Ctrl+Alt+Enter so a user-edited registry can't
+            // shadow the built-in Search / Replace accelerators. The Settings UI already blocks this
+            // at input time; this is the second line of defence.
+            if (HotkeyParser.IsReserved(preset.Hotkey)) continue;
             if (!TryParseHotkey(preset.Hotkey, out var key, out var modifiers)) continue;
 
             var accel = new KeyboardAccelerator { Key = key, Modifiers = modifiers };
