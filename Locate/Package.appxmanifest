@@ -10,14 +10,14 @@
 
   <Identity
     Name="b6273505-b9ea-4a63-ad8a-c8555fa24e40"
-    Publisher="CN=dominik.rauch"
+    Publisher="CN=drauch"
     Version="1.0.0.0" />
 
   <mp:PhoneIdentity PhoneProductId="b6273505-b9ea-4a63-ad8a-c8555fa24e40" PhonePublisherId="00000000-0000-0000-0000-000000000000"/>
 
   <Properties>
     <DisplayName>Locate</DisplayName>
-    <PublisherDisplayName>dominik.rauch</PublisherDisplayName>
+    <PublisherDisplayName>drauch</PublisherDisplayName>
     <Logo>Assets\StoreLogo.png</Logo>
   </Properties>
 
