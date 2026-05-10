@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "LionGrep (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "LionGrep (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}

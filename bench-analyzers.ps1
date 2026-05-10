@@ -3,7 +3,7 @@
 # Restore is done once per config (since the package set differs); --no-restore on builds.
 
 $ErrorActionPreference = 'Stop'
-$slnx = 'Locate.slnx'
+$slnx = 'LionGrep.slnx'
 $baseFlags = @('-p:Configuration=Debug', '-p:Platform=x64', '-p:TreatWarningsAsErrors=false', '-v:q', '-nologo')
 
 # Each config disables certain analyzers via /p flags. The two existing analyzers

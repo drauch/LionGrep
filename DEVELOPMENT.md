@@ -1,4 +1,4 @@
-# Locate — Developer Guide
+# LionGrep — Developer Guide
 
 This is the **onboarding doc for engineers** taking over the codebase. If you've just been handed the repo, read this top-to-bottom — it's written so you don't need any prior conversation context to be productive on day one.
 
@@ -8,7 +8,7 @@ For end-user behavior, see [DOCS.md](DOCS.md). For a 60-second project pitch, se
 
 ## 1. The 30-second mental model
 
-Locate is a **WinUI 3 desktop app** (`Locate/`) sitting on top of a **pure-.NET search/replace engine** (`Locate.Core/`). The engine is the interesting part — it targets **ripgrep-class throughput** through memory-mapped I/O, SIMD byte search over UTF-8, and per-file parallelism. The UI is deliberately thin: code-behind handlers parse routed-event args and immediately delegate to testable helpers in `Locate.Core.Logic/`.
+LionGrep is a **WinUI 3 desktop app** (`LionGrep/`) sitting on top of a **pure-.NET search/replace engine** (`LionGrep.Core/`). The engine is the interesting part — it targets **ripgrep-class throughput** through memory-mapped I/O, SIMD byte search over UTF-8, and per-file parallelism. The UI is deliberately thin: code-behind handlers parse routed-event args and immediately delegate to testable helpers in `LionGrep.Core.Logic/`.
 
 The engine has **no UI dependencies** and the view-logic helpers have **no WinUI types in their signatures**. That separation is what makes the codebase fast to test and easy to evolve.
 
@@ -17,8 +17,8 @@ The engine has **no UI dependencies** and the view-logic helpers have **no WinUI
 ## 2. Project layout
 
 ```
-Locate.slnx                 — solution file (.slnx, the new XML format)
-├── Locate/                 — WinUI 3 shell. MVVM via CommunityToolkit.Mvvm source generators.
+LionGrep.slnx                 — solution file (.slnx, the new XML format)
+├── LionGrep/                 — WinUI 3 shell. MVVM via CommunityToolkit.Mvvm source generators.
 │   ├── MainWindow.xaml(.cs)        — the search/replace form + results table
 │   ├── SettingsWindow.xaml(.cs)    — gear-icon modal: editor, presets, recents, reset
 │   ├── AboutDialog.xaml(.cs)
@@ -27,9 +27,9 @@ Locate.slnx                 — solution file (.slnx, the new XML format)
 │   ├── Services/                    — RegistryStore, SettingsStore, PresetsStore, RecentsStore, EditorLauncher
 │   ├── Controls/CursorThumb.cs      — thin Thumb wrapper (Thumb is sealed in WinUI 3)
 │   ├── Native/                      — P/Invoke shims (shell properties, etc.)
-│   └── Locate.csproj                — net10.0-windows10.0.19041.0, x86/x64/ARM64
+│   └── LionGrep.csproj                — net10.0-windows10.0.19041.0, x86/x64/ARM64
 │
-├── Locate.Core/            — search/replace engine (no UI deps)
+├── LionGrep.Core/            — search/replace engine (no UI deps)
 │   ├── Searcher.cs                  — top-level coordinator: enumerate → parallel match → stream results
 │   ├── FileEnumerator.cs            — Where/Filter pruning (size/date/attribute/exclude-paths)
 │   ├── FileSearcher.cs              — single-file search; the byte-level fast path lives here
@@ -48,19 +48,19 @@ Locate.slnx                 — solution file (.slnx, the new XML format)
 │       ├── CsvBuilder.cs                — RFC-4180 quoting; used by Export-to-CSV and copy-as-CSV
 │       └── PathPrefixDedup.cs           — prunes redundant search roots (C:\Foo plus C:\Foo\Bar → C:\Foo)
 │
-├── Locate.Core.Tests/      — NUnit unit tests for engine + logic (~200 tests)
+├── LionGrep.Core.Tests/      — NUnit unit tests for engine + logic (~200 tests)
 │   ├── *Tests.cs                    — engine: FileSearcher, FileReplacer, FileEnumerator, …
 │   ├── RegexLiteralExtractorTests.cs (large; pins the literal-extractor edge cases)
 │   └── Logic/                       — pure-function helpers
 │
-├── Locate.UI.Tests/        — FlaUI smoke suite (NUnit, sequential, real WinUI process)
+├── LionGrep.UI.Tests/        — FlaUI smoke suite (NUnit, sequential, real WinUI process)
 │   ├── AppFixture.cs                — process lifecycle + sandbox registry key
 │   ├── AppDriver.cs                 — UIA element finder, type/click/check helpers
 │   ├── CorpusBuilder.cs             — deterministic synthetic corpus for tests
 │   ├── Tests/*.cs                   — per-feature smoke tests
 │   └── README.md                    — coverage matrix + prerequisites
 │
-└── Locate.Bench/           — BenchmarkDotNet suite + corpus generator
+└── LionGrep.Bench/           — BenchmarkDotNet suite + corpus generator
     ├── Benchmarks/
     ├── Datasets/                    — code/log/repo profiles
     ├── Program.cs                   — CLI: `prepare <profile>`, `--filter`
@@ -83,20 +83,20 @@ From the repo root:
 
 ```pwsh
 # Restore + build everything (Debug, x64).
-dotnet build Locate.slnx -c Debug -p:Platform=x64
+dotnet build LionGrep.slnx -c Debug -p:Platform=x64
 
 # Run the app.
-dotnet run --project Locate/Locate.csproj -c Debug -p:Platform=x64
+dotnet run --project LionGrep/LionGrep.csproj -c Debug -p:Platform=x64
 
 # Release build, x64.
-dotnet build Locate/Locate.csproj -c Release -p:Platform=x64
+dotnet build LionGrep/LionGrep.csproj -c Release -p:Platform=x64
 
 # Publish a self-contained x64 app (R2R + trimmed).
-dotnet publish Locate/Locate.csproj -c Release -p:Platform=x64
+dotnet publish LionGrep/LionGrep.csproj -c Release -p:Platform=x64
 ```
 
 Notes:
-- `Locate.csproj` declares `<Platforms>x86;x64;ARM64</Platforms>` — pick one explicitly with `-p:Platform=x64`. Builds without an explicit platform will fail to find the WinAppSDK runtime targets.
+- `LionGrep.csproj` declares `<Platforms>x86;x64;ARM64</Platforms>` — pick one explicitly with `-p:Platform=x64`. Builds without an explicit platform will fail to find the WinAppSDK runtime targets.
 - `AllowUnsafeBlocks` is on (mmap pointer handling).
 - The MSIX project capability is enabled but you don't need to package to run from the IDE.
 
@@ -108,15 +108,15 @@ There are three tiers, in order of speed:
 
 ```pwsh
 # Fast: pure unit tests (engine + view-logic helpers). Runs in seconds. No UI thread.
-dotnet test Locate.Core.Tests/Locate.Core.Tests.csproj -c Debug
+dotnet test LionGrep.Core.Tests/LionGrep.Core.Tests.csproj -c Debug
 
 # Slow: end-to-end UI smoke. Drives a real WinUI window via FlaUI. Sequential.
 # Build the app first (the suite launches the built exe).
-dotnet build Locate/Locate.csproj -c Debug -p:Platform=x64
-dotnet test Locate.UI.Tests/Locate.UI.Tests.csproj -c Debug -s Locate.UI.Tests/Locate.UI.Tests.runsettings
+dotnet build LionGrep/LionGrep.csproj -c Debug -p:Platform=x64
+dotnet test LionGrep.UI.Tests/LionGrep.UI.Tests.csproj -c Debug -s LionGrep.UI.Tests/LionGrep.UI.Tests.runsettings
 
 # Benchmarks (release only, takes minutes).
-dotnet run --project Locate.Bench -c Release -- --filter '*LiteralCaseSensitive*'
+dotnet run --project LionGrep.Bench -c Release -- --filter '*LiteralCaseSensitive*'
 ```
 
 ### Test framework: NUnit, not xUnit
@@ -125,16 +125,16 @@ All test projects are NUnit. **Stay on NUnit when adding tests.** No mocks; test
 
 ### UI tests are slow on purpose
 
-`Locate.UI.Tests` is the **pre-release smoke gate**, not the inner loop. It runs sequentially (`MaxCpuCount=1` in `Locate.UI.Tests.runsettings`) against a single live process. Use it before tagging a release. Use `Locate.Core.Tests` for everyday work.
+`LionGrep.UI.Tests` is the **pre-release smoke gate**, not the inner loop. It runs sequentially (`MaxCpuCount=1` in `LionGrep.UI.Tests.runsettings`) against a single live process. Use it before tagging a release. Use `LionGrep.Core.Tests` for everyday work.
 
-The UI suite isolates itself from your real settings via `--alternate-registry-key Software\LocateUITests\<guid>`; the sandbox subkey is wiped at fixture teardown.
+The UI suite isolates itself from your real settings via `--alternate-registry-key Software\LionGrepUITests\<guid>`; the sandbox subkey is wiped at fixture teardown.
 
 ### Running a sandboxed app instance manually
 
 Useful when poking at preset/settings UI without touching your real profile:
 
 ```pwsh
-Locate.exe --alternate-registry-key Software\LocateScratch
+LionGrep.exe --alternate-registry-key Software\LionGrepScratch
 ```
 
 All persisted state (settings, presets, recents, last-form snapshot) redirects to that subkey. Delete the subkey to reset.
@@ -143,22 +143,22 @@ All persisted state (settings, presets, recents, last-form snapshot) redirects t
 
 ## 5. Architecture notes
 
-- **`Locate.Core`** — the search/replace engine **plus** view-logic helpers (`Locate.Core.Logic`). Pure .NET, no UI deps. Memory-mapped I/O, SIMD-vectorized byte search via `IndexOf`, RFC-style BOM detection, ordinal / `OrdinalIgnoreCase` semantics. Engine + logic are tested with ~200 NUnit tests against real temp files (no mocks).
-- **`Locate.Core.Logic`** — code that used to live in the WinUI code-behind: `HotkeyParser`, `ResponsiveLayout`, `SortDirectionLogic`, `CsvBuilder`, `PathPrefixDedup`. Each is a pure function with WinUI-free inputs and outputs, and each is unit-tested. The window code-behind translates between these helpers and the WinUI types.
-- **`Locate` (the app)** — WinUI 3 shell, MVVM via `CommunityToolkit.Mvvm` source generators. Custom title bar, custom CheckBox template for compact density, `CursorThumb` UserControl wrapping a `Thumb` (Thumb is sealed in WinUI 3, so we can't subclass it directly).
-- **Persistence** — registry under `HKCU\Software\Locate\…` (recents, settings, presets, last-form snapshot). Redirectable per-process via `--alternate-registry-key`.
+- **`LionGrep.Core`** — the search/replace engine **plus** view-logic helpers (`LionGrep.Core.Logic`). Pure .NET, no UI deps. Memory-mapped I/O, SIMD-vectorized byte search via `IndexOf`, RFC-style BOM detection, ordinal / `OrdinalIgnoreCase` semantics. Engine + logic are tested with ~200 NUnit tests against real temp files (no mocks).
+- **`LionGrep.Core.Logic`** — code that used to live in the WinUI code-behind: `HotkeyParser`, `ResponsiveLayout`, `SortDirectionLogic`, `CsvBuilder`, `PathPrefixDedup`. Each is a pure function with WinUI-free inputs and outputs, and each is unit-tested. The window code-behind translates between these helpers and the WinUI types.
+- **`LionGrep` (the app)** — WinUI 3 shell, MVVM via `CommunityToolkit.Mvvm` source generators. Custom title bar, custom CheckBox template for compact density, `CursorThumb` UserControl wrapping a `Thumb` (Thumb is sealed in WinUI 3, so we can't subclass it directly).
+- **Persistence** — registry under `HKCU\Software\LionGrep\…` (recents, settings, presets, last-form snapshot). Redirectable per-process via `--alternate-registry-key`.
 
 ### MVVM conventions
 
 - ViewModels use `[ObservableProperty]` and `[RelayCommand]` from `CommunityToolkit.Mvvm`.
-- Code-behind handlers parse routed-event args and **immediately** delegate to a testable helper. Anything richer than a one-liner has been extracted to `Locate.Core.Logic`.
+- Code-behind handlers parse routed-event args and **immediately** delegate to a testable helper. Anything richer than a one-liner has been extracted to `LionGrep.Core.Logic`.
 - The XAML files (`MainWindow.xaml`, `SettingsWindow.xaml`, `AboutDialog.xaml`) are intentionally **not** unit-tested — they're declarative bindings to ObservableProperties and event handler names.
 
 ---
 
 ## 6. Performance levers in the engine
 
-This is the part the engine cares about most. If you're touching `Locate.Core/Searcher.cs` or `FileSearcher.cs`, read this first.
+This is the part the engine cares about most. If you're touching `LionGrep.Core/Searcher.cs` or `FileSearcher.cs`, read this first.
 
 - **Per-file parallelism.** `Searcher.Search` dispatches files across `Environment.ProcessorCount` worker threads via `Parallel.ForEach`, with results streamed back through a bounded `BlockingCollection` so a slow consumer can't OOM the producer. On 8-core boxes this translates to ~Nx wall-clock speedup on warm caches; cancelling either side propagates to the other via a linked CTS, and consuming early (e.g. `.Take(10)`) cleanly stops the producer.
 - **Byte-level fast path for literal patterns over UTF-8.** UTF-8 is self-synchronizing — a multi-byte character's bytes never appear at any other character's position — so byte-level `IndexOf` is correct for **any** case-sensitive pattern, not just ASCII. `FileSearcher` skips per-line decoding entirely and uses SIMD-vectorized `IndexOf`/`IndexOfAny` over the raw bytes. Only matched lines are decoded for display. Case-insensitive matches still hit the path when the pattern is ASCII (via pre-folded bytes + `IndexOfAny(lower, upper)` skip-scan); whole-word boundaries are checked at byte level since word characters are themselves ASCII (any byte ≥ 128 is part of a non-ASCII char and therefore a non-word boundary).
@@ -177,7 +177,7 @@ This is the part the engine cares about most. If you're touching `Locate.Core/Se
 
 ### Streaming search and replace
 
-Locate handles files of any practical size, transitioning to a streaming path above per-feature thresholds. Both paths share the same matchers / line replacers — the streaming code only differs in how it feeds bytes/chars to them.
+LionGrep handles files of any practical size, transitioning to a streaming path above per-feature thresholds. Both paths share the same matchers / line replacers — the streaming code only differs in how it feeds bytes/chars to them.
 
 - **Search ≤ 2 GiB** — single-span mmap (or buffered read for files < 64 KiB). One `ReadOnlySpan<byte>` over the whole file.
 - **Search > 2 GiB** — `SearchChunked` in `FileSearcher.cs`. Opens one `MemoryMappedFile`, iterates 64 MiB views, slides each chunk's end back to the last `\n` so no line is split. Tracks `lineNumber` across chunks. **UTF-8 only**; non-UTF-8 files > 2 GiB and `DotMatchesNewline` regex > 2 GiB throw `NotSupportedException` (Searcher catches and silently skips). Pathological single-line files > 64 MiB also throw.
@@ -202,20 +202,20 @@ When `CreateViewAccessor(offset, size)` is called with an `offset` that isn't a 
 
 ## 7. Benchmarking
 
-`Locate.Bench/` is a separate console project with a BenchmarkDotNet suite plus a deterministic synthetic-corpus generator. The generator caches by `(profile, seed)` so repeated runs hit the exact same files on disk — which is also what makes ripgrep-comparable measurements possible:
+`LionGrep.Bench/` is a separate console project with a BenchmarkDotNet suite plus a deterministic synthetic-corpus generator. The generator caches by `(profile, seed)` so repeated runs hit the exact same files on disk — which is also what makes ripgrep-comparable measurements possible:
 
 ```pwsh
 # Build (or reuse) the corpus, get its absolute path on stdout
-$corpus = (dotnet run --project Locate.Bench -c Release -- prepare code).Trim()
+$corpus = (dotnet run --project LionGrep.Bench -c Release -- prepare code).Trim()
 
 # Time ripgrep on it
 Measure-Command { rg --no-stats -c blazingNeedle $corpus | Out-Null }
 
 # Run our benchmark suite — the LiteralCaseSensitive case targets the same workload
-dotnet run --project Locate.Bench -c Release -- --filter '*LiteralCaseSensitive*'
+dotnet run --project LionGrep.Bench -c Release -- --filter '*LiteralCaseSensitive*'
 ```
 
-See `Locate.Bench/README.md` for the available profiles, the patterns each benchmark exercises, and tips for fair comparisons (matching OS page-cache state, etc.).
+See `LionGrep.Bench/README.md` for the available profiles, the patterns each benchmark exercises, and tips for fair comparisons (matching OS page-cache state, etc.).
 
 ---
 
@@ -241,4 +241,4 @@ See `Locate.Bench/README.md` for the available profiles, the patterns each bench
 | Touch the regex pre-filter | `RegexLiteralExtractor` (read the test file first — there are subtle invariants) |
 | Add a column to the results table | `MainWindow.xaml` table + `FileMatchViewModel` + `ResponsiveLayout` (hide priority) |
 | Persist a new setting | `RegistryStore` / `SettingsStore` |
-| Add a smoke test | `Locate.UI.Tests/Tests/*.cs` — copy the closest existing fixture |
+| Add a smoke test | `LionGrep.UI.Tests/Tests/*.cs` — copy the closest existing fixture |

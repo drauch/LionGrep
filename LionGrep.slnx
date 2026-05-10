@@ -1,0 +1,17 @@
+<Solution>
+  <Configurations>
+    <Platform Name="ARM64" />
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Project Path="LionGrep.Bench/LionGrep.Bench.csproj" />
+  <Project Path="LionGrep.Core.Tests/LionGrep.Core.Tests.csproj" />
+  <Project Path="LionGrep.Core/LionGrep.Core.csproj" />
+  <Project Path="LionGrep.UI.Tests/LionGrep.UI.Tests.csproj" />
+  <Project Path="LionGrep/LionGrep.csproj">
+    <Platform Solution="*|ARM64" Project="ARM64" />
+    <Platform Solution="*|x64" Project="x64" />
+    <Platform Solution="*|x86" Project="x86" />
+    <Deploy />
+  </Project>
+</Solution>

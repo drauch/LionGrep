@@ -51,12 +51,12 @@ dotnet_diagnostic.S101.severity = none
 # are explanatory captions on test fixtures and reference notes, not dead code.
 dotnet_diagnostic.S125.severity = none
 
-[Locate.Core.Tests/**.cs]
+[LionGrep.Core.Tests/**.cs]
 # MA0002 (Meziantou): Use IEqualityComparer<string> overload — test assertions on string
 # collections; default ordinal equality matches our codebase invariant exactly.
 dotnet_diagnostic.MA0002.severity = none
 
-[Locate.UI.Tests/**.cs]
+[LionGrep.UI.Tests/**.cs]
 # S2925 (Sonar): Thread.Sleep in tests — FlaUI smoke tests need short sleeps to wait for
 # UI Automation to settle between actions; there's no race-free alternative below the
 # UIA layer.

@@ -1,8 +1,8 @@
-# Locate
+# LionGrep
 
 **A fast, predictable grep & replace tool for Windows.**
 
-Locate is a UI-driven search & replace tool built on .NET 10 + WinUI 3, targeting **ripgrep-class throughput** without leaving the desktop. It's the tool to reach for when grepWin is too slow and `rg` is too much hassle.
+LionGrep is a UI-driven search & replace tool built on .NET 10 + WinUI 3, targeting **ripgrep-class throughput** without leaving the desktop. It's the tool to reach for when grepWin is too slow and `rg` is too much hassle.
 
 **Current version:** 1.0
 
@@ -31,7 +31,7 @@ Locate is a UI-driven search & replace tool built on .NET 10 + WinUI 3, targetin
 
 ## Quick start (users)
 
-1. Run `Locate.exe`.
+1. Run `LionGrep.exe`.
 2. Drop one or more directories into **Search in**.
 3. Type a pattern in **Search for**.
 4. Press **Ctrl+Enter**.
@@ -45,16 +45,16 @@ Press **Ctrl+Alt+Enter** to rewrite matches on disk. The first time, you'll get 
 
 ```pwsh
 # Build everything (Windows + .NET 10 SDK + WinAppSDK 2.0 required).
-dotnet build Locate.slnx -c Debug -p:Platform=x64
+dotnet build LionGrep.slnx -c Debug -p:Platform=x64
 
 # Run.
-dotnet run --project Locate/Locate.csproj -c Debug -p:Platform=x64
+dotnet run --project LionGrep/LionGrep.csproj -c Debug -p:Platform=x64
 
 # Fast unit tests (~200, NUnit, no UI).
-dotnet test Locate.Core.Tests/Locate.Core.Tests.csproj
+dotnet test LionGrep.Core.Tests/LionGrep.Core.Tests.csproj
 
 # Slow end-to-end UI smoke (FlaUI; build the app first).
-dotnet test Locate.UI.Tests/Locate.UI.Tests.csproj -s Locate.UI.Tests/Locate.UI.Tests.runsettings
+dotnet test LionGrep.UI.Tests/LionGrep.UI.Tests.csproj -s LionGrep.UI.Tests/LionGrep.UI.Tests.runsettings
 ```
 
 See [DEVELOPMENT.md](DEVELOPMENT.md) for everything else.

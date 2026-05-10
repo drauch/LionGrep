@@ -1,6 +1,6 @@
-# Locate — User Manual
+# LionGrep — User Manual
 
-Locate is a UI-driven grep-like search & replace tool for Windows, built on .NET 10 and WinUI 3. The goal is **predictable speed** at ripgrep-class throughput while staying out of your way.
+LionGrep is a UI-driven grep-like search & replace tool for Windows, built on .NET 10 and WinUI 3. The goal is **predictable speed** at ripgrep-class throughput while staying out of your way.
 
 This document is the canonical user manual. It describes every visible feature and every non-obvious behavior (especially "what counts as skipped"). It is updated in lock-step with the code.
 
@@ -80,7 +80,7 @@ Patterns are **literal substrings**. Ordinal comparison; case sensitivity contro
 Patterns are .NET regular expressions, compiled with `RegexOptions.CultureInvariant`. When **Case sensitive** is off, `RegexOptions.IgnoreCase` is added. When **Dot matches newline** is on, `RegexOptions.Singleline` is added. **Whole word** wraps the pattern in `\b(?:…)\b`.
 
 ### Locale
-Locate **never** uses culture-aware comparison. This is a design decision, deliberate, matching ripgrep's behaviour and avoiding surprises like Turkish dotless-i or German ß ↔ ss equivalence. It's also dramatically faster than culture-aware comparison.
+LionGrep **never** uses culture-aware comparison. This is a design decision, deliberate, matching ripgrep's behaviour and avoiding surprises like Turkish dotless-i or German ß ↔ ss equivalence. It's also dramatically faster than culture-aware comparison.
 
 ### Search variants (Search button dropdown)
 
@@ -95,7 +95,7 @@ Click the chevron on the **Search** split button:
 
 Replace rewrites every matched file on disk. Atomic via temp-file + `File.Replace`, so a failure can't corrupt the original. Files of any size are supported for the line-by-line case (the engine streams them through a sibling temp file and renames at the end). The only remaining cap is on **regex replace with `Dot matches newline`**: that mode requires the entire file in one `string`, so it's capped at **256 MiB**; larger files throw `NotSupportedException` and are skipped.
 
-**You don't need to click Search first.** If you click **Replace…** (or press **Ctrl+Alt+Enter**) with no current results, Locate runs the search implicitly and the confirmation dialog opens with the file count it found. If the implicit search yields nothing, the status line says so and no files are touched. With results already visible, Replace acts on those — exactly the same as if you'd clicked it manually.
+**You don't need to click Search first.** If you click **Replace…** (or press **Ctrl+Alt+Enter**) with no current results, LionGrep runs the search implicitly and the confirmation dialog opens with the file count it found. If the implicit search yields nothing, the status line says so and no files are touched. With results already visible, Replace acts on those — exactly the same as if you'd clicked it manually.
 
 ### 4.1 Confirmation dialog (3-way)
 
@@ -119,7 +119,7 @@ Replace runs across `Environment.ProcessorCount` worker threads (`Parallel.ForEa
 
 ### 4.4 Other behavior
 
-**Encoding round-trip:** Locate detects encoding via BOM (UTF-8/16 LE/16 BE/32 LE/32 BE). No BOM falls back to UTF-8. Replace writes back with the **same** encoding it detected, including the BOM if there was one.
+**Encoding round-trip:** LionGrep detects encoding via BOM (UTF-8/16 LE/16 BE/32 LE/32 BE). No BOM falls back to UTF-8. Replace writes back with the **same** encoding it detected, including the BOM if there was one.
 
 **Line endings:** preserved per-line — CRLF stays CRLF, LF stays LF, even mixed within a file.
 
@@ -141,7 +141,7 @@ The status line at the right end of the **SEARCH RESULTS** row reads:
 - **S files searched** — files that passed all enumeration filters and were actually opened by the searcher (≥ N).
 - **K skipped** — files considered but filtered out (see breakdown below).
 
-The window title separately shows the first non-empty line of **Search in** so you always know which root the open Locate window is searching against, even when many windows are open.
+The window title separately shows the first non-empty line of **Search in** so you always know which root the open LionGrep window is searching against, even when many windows are open.
 
 **Skipped** is the count of files that were considered but excluded from the search.
 
@@ -160,7 +160,7 @@ The window title separately shows the first non-empty line of **Search in** so y
 
 **Rule of thumb:** "Skipped" answers the question *"how many files did we look at and decide to filter out?"* It does not include files we never saw because a higher-level predicate told us not to recurse.
 
-**Why grepWin reports more skipped files for the same query.** grepWin walks **into** every directory and rejects each file individually, so files inside `bin`, `obj`, `.git`, `packages`, etc. inflate its skipped count. Locate's `ShouldRecursePredicate` prunes those subtrees from enumeration entirely — the files are never seen by the OS, never counted, and never paid for. Same physical results, fewer syscalls, smaller skipped number.
+**Why grepWin reports more skipped files for the same query.** grepWin walks **into** every directory and rejects each file individually, so files inside `bin`, `obj`, `.git`, `packages`, etc. inflate its skipped count. LionGrep's `ShouldRecursePredicate` prunes those subtrees from enumeration entirely — the files are never seen by the OS, never counted, and never paid for. Same physical results, fewer syscalls, smaller skipped number.
 
 ---
 
@@ -180,7 +180,7 @@ If **Search for** is empty *and* **Search in file & sub directory names** is on,
 
 ### 6.3 File size limits
 
-Locate handles files of arbitrary size in both Search and Replace via a streaming path that kicks in above an in-memory threshold. There are still a few specific caps tied to features that fundamentally need the whole file in one `string`:
+LionGrep handles files of arbitrary size in both Search and Replace via a streaming path that kicks in above an in-memory threshold. There are still a few specific caps tied to features that fundamentally need the whole file in one `string`:
 
 - **Search, line-by-line** — no cap. Files ≤ 2 GiB use a single mmap span; files > 2 GiB are walked in 64 MiB chunks aligned to newline boundaries.
 - **Search, `Dot matches newline` (regex)** — capped at **2 GiB**. Singleline regex requires the whole file as one `string`, which can't exceed `int.MaxValue`. Larger files throw and are silently skipped.
@@ -225,7 +225,7 @@ Columns left-to-right: **Name, Size, Matches, Path, Ext, Encoding, Date modified
 
 When **Search in file & sub directory names** is on and a file is in the results because of a **name** match, the matched portion of the file name in the **Name** column is highlighted with a yellow background. If a file appears for name reasons only (no content matches), the row's chevron is hidden — there's nothing to expand. Files with content matches show the chevron normally; if their name also matched, the highlight shows there too.
 
-**Path column** — when **Search in** has exactly one root, paths are shown relative to that root (so you see `src/Locate` rather than `C:\Projects\2026Projects\Locate\src\Locate`). When you have multiple search roots, the column shows the full directory path so the result is unambiguous.
+**Path column** — when **Search in** has exactly one root, paths are shown relative to that root (so you see `src/LionGrep` rather than `C:\Projects\2026Projects\LionGrep\src\LionGrep`). When you have multiple search roots, the column shows the full directory path so the result is unambiguous.
 
 **Encoding column** — shows `—` (em-dash) when the file is in the results because of a name match only and was never opened. When the file's content was scanned, this column shows `UTF-8`, `UTF-8 BOM`, `UTF-16 LE`, `UTF-16 BE`, `UTF-32 LE`, or `UTF-32 BE` per BOM detection (no BOM falls back to `UTF-8`).
 
@@ -292,7 +292,7 @@ The horizontal divider between form and results can be dragged vertically. On la
 
 When you start a search or replace, the form row collapses (the divider rides up to the top). Drag it back down to see the form again.
 
-While the form is collapsed, the **window title** mirrors the running search status — e.g. `Locate — 42 files, 318 matches, 9,213 skipped (running)` — so you always see progress without having to expand the form. The taskbar/Alt+Tab title shows the same string.
+While the form is collapsed, the **window title** mirrors the running search status — e.g. `LionGrep — 42 files, 318 matches, 9,213 skipped (running)` — so you always see progress without having to expand the form. The taskbar/Alt+Tab title shows the same string.
 
 ---
 
@@ -305,11 +305,11 @@ A preset captures a subset of the form's three groups (**Where**, **What**, **Fi
 
 Activating a preset fills only the *checked* groups; unchecked groups are left untouched. So presets compose: apply a "Where: my source tree" preset followed by a "Filter: my exclusions" preset.
 
-**Hotkeys**: assign per-preset, e.g. `Ctrl+1`, `Ctrl+Shift+F`, `Alt+F2`. Active in-app whenever Locate has focus. The Hotkey field has a small **Assign** button — click it and the next key combination you press is captured directly (no typing the literal "Ctrl+Shift+F2"). **`Ctrl+Enter` and `Ctrl+Alt+Enter` are reserved** for Search and Replace and are rejected with a red message in both the save-preset dialog and Settings. Global system-wide hotkeys are a v1.1 item.
+**Hotkeys**: assign per-preset, e.g. `Ctrl+1`, `Ctrl+Shift+F`, `Alt+F2`. Active in-app whenever LionGrep has focus. The Hotkey field has a small **Assign** button — click it and the next key combination you press is captured directly (no typing the literal "Ctrl+Shift+F2"). **`Ctrl+Enter` and `Ctrl+Alt+Enter` are reserved** for Search and Replace and are rejected with a red message in both the save-preset dialog and Settings. Global system-wide hotkeys are a v1.1 item.
 
 **Validation**: each preset must have a **non-empty, case-insensitive unique name** and a **unique hotkey** across all presets. Conflicts are flagged with a red border and an inline message; you can't save a preset that violates either rule.
 
-The form's last successful state is also auto-restored on next launch (a "last form" implicit preset persisted in the registry under `HKCU\Software\Locate\Settings\LastForm`).
+The form's last successful state is also auto-restored on next launch (a "last form" implicit preset persisted in the registry under `HKCU\Software\LionGrep\Settings\LastForm`).
 
 ---
 
@@ -322,10 +322,10 @@ Opened from the gear icon in the title bar.
 - **Remember recently used values between sessions** — when ticked (default), the recents dropdown for each input persists in the registry. Untick to disable: existing history is wiped on Save and no new entries are recorded.
 - **Presets** — list view on the left, details panel on the right. **Add** / **Remove** sit next to the section title (Add prefills the new preset from the current main-window form and ticks all three apply-group boxes; Remove asks "Remove the preset 'X'?" first). Each preset has a name, optional hotkey, three apply-group checkboxes, and the full set of captured form values (Where / What / Filter).
 - **Settings is modal and works on a working copy.** Edits in this dialog (preset add/remove/edit, settings toggles) only touch the registry when you click **Save**. **Cancel** (or **Esc**, or the **X** button) discards everything you changed since opening the dialog — useful if you experimented with a preset and want to back out.
-- **Reset everything…** (footer, left side) — wipes the entire `HKCU\Software\Locate` registry hive: settings, presets, recents, and the last-form snapshot. Confirmation dialog protects against accidents; the action is irreversible and doesn't participate in Cancel/Save semantics.
-- **Export settings… / Import settings…** (footer, left side) — save your current settings + presets + recents to a `.reg` file, or replace them all with the contents of one. Exported files import via regedit on double-click, or use Import here (warns + overwrites; Settings closes after import — restart Locate to see the imported state). The export honours `--alternate-registry-key` — the file embeds whichever root the running instance uses.
+- **Reset everything…** (footer, left side) — wipes the entire `HKCU\Software\LionGrep` registry hive: settings, presets, recents, and the last-form snapshot. Confirmation dialog protects against accidents; the action is irreversible and doesn't participate in Cancel/Save semantics.
+- **Export settings… / Import settings…** (footer, left side) — save your current settings + presets + recents to a `.reg` file, or replace them all with the contents of one. Exported files import via regedit on double-click, or use Import here (warns + overwrites; Settings closes after import — restart LionGrep to see the imported state). The export honours `--alternate-registry-key` — the file embeds whichever root the running instance uses.
 
-All settings persist under `HKCU\Software\Locate` by default. To run a sandboxed instance — handy for testing settings UI, demos, or tools like the FlaUI smoke suite — pass `--alternate-registry-key <HKCU subpath>` on the command line, and **all** persisted state (settings, presets, recents, last-form snapshot) is redirected to that subkey instead. Example: `Locate.exe --alternate-registry-key Software\LocateScratch` runs against a throwaway profile and never touches your real `HKCU\Software\Locate`.
+All settings persist under `HKCU\Software\LionGrep` by default. To run a sandboxed instance — handy for testing settings UI, demos, or tools like the FlaUI smoke suite — pass `--alternate-registry-key <HKCU subpath>` on the command line, and **all** persisted state (settings, presets, recents, last-form snapshot) is redirected to that subkey instead. Example: `LionGrep.exe --alternate-registry-key Software\LionGrepScratch` runs against a throwaway profile and never touches your real `HKCU\Software\LionGrep`.
 
 ---
 
