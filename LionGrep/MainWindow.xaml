@@ -587,7 +587,7 @@
                                     <RowDefinition Height="Auto" />
                                 </Grid.RowDefinitions>
 
-                                <Grid Grid.Row="0" Padding="6,1,6,1"
+                                <Grid Grid.Row="0" Padding="6,1,6,1" Background="Transparent"
                                       DoubleTapped="OnFileRowDoubleTapped"
                                       RightTapped="OnFileRowRightTapped">
                                     <Grid.ColumnDefinitions>
@@ -651,7 +651,7 @@
                                               Padding="28,0,8,2">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate x:DataType="vm:LineMatchViewModel">
-                                            <Grid Padding="0" DoubleTapped="OnLineDoubleTapped">
+                                            <Grid Padding="0" Background="Transparent" DoubleTapped="OnLineDoubleTapped">
                                                 <Grid.ColumnDefinitions>
                                                     <ColumnDefinition Width="Auto" />
                                                     <ColumnDefinition Width="*" />
