@@ -37,7 +37,7 @@ public sealed class SettingsStore
         var lastForm = RegistryStore.ReadString(SubPath, LastFormValue);
         if (!string.IsNullOrEmpty(lastForm))
         {
-            try { settings.LastForm = JsonSerializer.Deserialize<Preset>(lastForm); }
+            try { settings.LastForm = JsonSerializer.Deserialize(lastForm, JsonContext.Default.Preset); }
             catch (JsonException) { /* ignore corrupt blob */ }
         }
         return settings;
@@ -52,7 +52,7 @@ public sealed class SettingsStore
         RegistryStore.WriteString(SubPath, RememberRecentsValue, settings.RememberRecentValues ? "1" : "0");
         RegistryStore.WriteString(SubPath, BackupExtensionValue, NormalizeBackupExtension(settings.BackupExtension));
         if (settings.LastForm is not null)
-            RegistryStore.WriteString(SubPath, LastFormValue, JsonSerializer.Serialize(settings.LastForm));
+            RegistryStore.WriteString(SubPath, LastFormValue, JsonSerializer.Serialize(settings.LastForm, JsonContext.Default.Preset));
     }
 
     /// <summary>Trim whitespace and surrounding dots; fall back to the default if the result is empty

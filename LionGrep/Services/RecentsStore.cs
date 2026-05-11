@@ -19,7 +19,7 @@ public sealed class RecentsStore
         if (string.IsNullOrEmpty(json)) return [];
         try
         {
-            var raw = JsonSerializer.Deserialize<List<string>>(json) ?? [];
+            var raw = JsonSerializer.Deserialize(json, JsonContext.Default.ListString) ?? [];
             // Cleanse legacy entries: trim trailing whitespace/newlines and dedupe (preserving first-seen order).
             var seen = new HashSet<string>(StringComparer.Ordinal);
             var clean = new List<string>(raw.Count);
@@ -47,7 +47,7 @@ public sealed class RecentsStore
         raw.RemoveAll(s => string.Equals(s, value, StringComparison.Ordinal));
         raw.Insert(0, value);
         if (raw.Count > Capacity) raw.RemoveRange(Capacity, raw.Count - Capacity);
-        RegistryStore.WriteString(SubPath, fieldName, JsonSerializer.Serialize(raw));
+        RegistryStore.WriteString(SubPath, fieldName, JsonSerializer.Serialize(raw, JsonContext.Default.ListString));
     }
 
     public static void ClearAll()
@@ -59,7 +59,7 @@ public sealed class RecentsStore
     {
         var json = RegistryStore.ReadString(SubPath, fieldName);
         if (string.IsNullOrEmpty(json)) return [];
-        try { return JsonSerializer.Deserialize<List<string>>(json) ?? []; }
+        try { return JsonSerializer.Deserialize(json, JsonContext.Default.ListString) ?? []; }
         catch { return []; }
     }
 }
