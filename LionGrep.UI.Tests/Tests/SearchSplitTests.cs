@@ -77,12 +77,11 @@ public class SearchSplitTests
                 FlaUI.Core.WindowsAPI.VirtualKeyShort.LMENU,
                 FlaUI.Core.WindowsAPI.VirtualKeyShort.DOWN);
         }
-        Thread.Sleep(300);
-
-        var menuItem = AppFixture.MainWindow.FindFirstDescendant(
-            AppFixture.Automation.ConditionFactory.ByControlType(ControlType.MenuItem)
-                .And(AppFixture.Automation.ConditionFactory.ByName(itemName)));
-        Assert.That(menuItem, Is.Not.Null, $"Menu item '{itemName}' not found.");
-        menuItem!.AsMenuItem().Invoke();
+        var menuItem = WaitHelpers.WaitFor(
+            () => AppFixture.MainWindow.FindFirstDescendant(
+                AppFixture.Automation.ConditionFactory.ByControlType(ControlType.MenuItem)
+                    .And(AppFixture.Automation.ConditionFactory.ByName(itemName))),
+            description: $"menu item '{itemName}'");
+        menuItem.AsMenuItem().Invoke();
     }
 }

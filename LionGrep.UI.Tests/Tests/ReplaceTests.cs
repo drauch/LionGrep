@@ -47,13 +47,13 @@ public class ReplaceTests
         // Ctrl+Alt+Enter now opens the same 3-way confirmation dialog as the main Replace button
         // (per UX request). The "no backups" path is reachable via the dialog's secondary button.
         _driver.TriggerReplaceImmediate();
-        Thread.Sleep(500);
 
-        var noBak = AppFixture.Automation.GetDesktop().FindFirstDescendant(
-            AppFixture.Automation.ConditionFactory.ByControlType(ControlType.Button)
-                .And(AppFixture.Automation.ConditionFactory.ByName("Replace w/o backups")));
-        Assert.That(noBak, Is.Not.Null, "3-way dialog should expose 'Replace w/o backups'.");
-        noBak!.AsButton().Invoke();
+        var noBak = WaitHelpers.WaitFor(
+            () => AppFixture.Automation.GetDesktop().FindFirstDescendant(
+                AppFixture.Automation.ConditionFactory.ByControlType(ControlType.Button)
+                    .And(AppFixture.Automation.ConditionFactory.ByName("Replace w/o backups"))),
+            description: "'Replace w/o backups' button on 3-way dialog");
+        noBak.AsButton().Invoke();
         Thread.Sleep(800);
 
         Assert.That(File.ReadAllText(Path.Combine(_isolatedDir, "a.cs")), Is.EqualTo("OMEGA bravo OMEGA\n"));
@@ -69,14 +69,13 @@ public class ReplaceTests
             AppFixture.Automation.ConditionFactory.ByAutomationId("ReplaceSplit"));
         Assert.That(replaceBtn, Is.Not.Null, "ReplaceSplit not found.");
         replaceBtn!.AsButton().Invoke();
-        Thread.Sleep(400);
 
-        // Click the Cancel button on the ContentDialog.
-        var cancel = AppFixture.Automation.GetDesktop().FindFirstDescendant(
-            AppFixture.Automation.ConditionFactory.ByControlType(ControlType.Button)
-                .And(AppFixture.Automation.ConditionFactory.ByName("Cancel")));
-        Assert.That(cancel, Is.Not.Null, "3-way dialog should expose a Cancel button.");
-        cancel!.AsButton().Invoke();
+        var cancel = WaitHelpers.WaitFor(
+            () => AppFixture.Automation.GetDesktop().FindFirstDescendant(
+                AppFixture.Automation.ConditionFactory.ByControlType(ControlType.Button)
+                    .And(AppFixture.Automation.ConditionFactory.ByName("Cancel"))),
+            description: "Cancel button on 3-way dialog");
+        cancel.AsButton().Invoke();
         Thread.Sleep(300);
 
         Assert.That(File.ReadAllText(Path.Combine(_isolatedDir, "a.cs")), Is.EqualTo(originalA));
@@ -92,11 +91,12 @@ public class ReplaceTests
             AppFixture.Automation.ConditionFactory.ByAutomationId("ReplaceSplit"));
         Assert.That(replaceBtn, Is.Not.Null, "ReplaceSplit not found.");
         replaceBtn!.AsButton().Invoke();
-        Thread.Sleep(400);
-        var primary = AppFixture.Automation.GetDesktop().FindFirstDescendant(
-            AppFixture.Automation.ConditionFactory.ByControlType(ControlType.Button)
-                .And(AppFixture.Automation.ConditionFactory.ByName("Replace with backups")));
-        primary!.AsButton().Invoke();
+        var primary = WaitHelpers.WaitFor(
+            () => AppFixture.Automation.GetDesktop().FindFirstDescendant(
+                AppFixture.Automation.ConditionFactory.ByControlType(ControlType.Button)
+                    .And(AppFixture.Automation.ConditionFactory.ByName("Replace with backups"))),
+            description: "'Replace with backups' button on 3-way dialog");
+        primary.AsButton().Invoke();
         Thread.Sleep(800);
 
         // Sabotage: delete the backup files we just wrote.
@@ -120,14 +120,14 @@ public class ReplaceTests
             AppFixture.Automation.ConditionFactory.ByAutomationId("ReplaceSplit"));
         Assert.That(replaceBtn, Is.Not.Null, "ReplaceSplit not found.");
         replaceBtn!.AsButton().Invoke();
-        Thread.Sleep(400);
 
         // Click "Replace with backups" (the Primary button on the dialog).
-        var primary = AppFixture.Automation.GetDesktop().FindFirstDescendant(
-            AppFixture.Automation.ConditionFactory.ByControlType(ControlType.Button)
-                .And(AppFixture.Automation.ConditionFactory.ByName("Replace with backups")));
-        Assert.That(primary, Is.Not.Null, "3-way dialog should expose 'Replace with backups'.");
-        primary!.AsButton().Invoke();
+        var primary = WaitHelpers.WaitFor(
+            () => AppFixture.Automation.GetDesktop().FindFirstDescendant(
+                AppFixture.Automation.ConditionFactory.ByControlType(ControlType.Button)
+                    .And(AppFixture.Automation.ConditionFactory.ByName("Replace with backups"))),
+            description: "'Replace with backups' button on 3-way dialog");
+        primary.AsButton().Invoke();
         Thread.Sleep(800);
 
         // After replace: contents changed AND backup files exist.

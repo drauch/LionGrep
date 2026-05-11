@@ -33,10 +33,10 @@ public class SettingsWindowTests
         var settingsBtn = FindSettingsButton();
         Assert.That(settingsBtn, Is.Not.Null, "Title-bar Settings button not found.");
         settingsBtn!.AsButton().Invoke();
-        Thread.Sleep(800);
 
-        var settingsWindow = FindSettingsWindow();
-        Assert.That(settingsWindow, Is.Not.Null, "Settings window did not open.");
+        var settingsWindow = WaitHelpers.WaitFor(
+            FindSettingsWindow,
+            description: "Settings window to open");
 
         // "Don't warn when replacing"
         AutomationElement? dontWarn = null;
@@ -77,24 +77,24 @@ public class SettingsWindowTests
         var settingsBtn = FindSettingsButton();
         Assert.That(settingsBtn, Is.Not.Null, "Title-bar Settings button not found.");
         settingsBtn!.AsButton().Invoke();
-        Thread.Sleep(800);
 
-        var settingsWindow = FindSettingsWindow();
-        Assert.That(settingsWindow, Is.Not.Null, "Settings window did not open.");
+        var settingsWindow = WaitHelpers.WaitFor(
+            FindSettingsWindow,
+            description: "Settings window to open");
 
         var resetBtn = settingsWindow!.FindFirstDescendant(
             AppFixture.Automation.ConditionFactory.ByControlType(ControlType.Button)
                 .And(AppFixture.Automation.ConditionFactory.ByName("Reset everything…")));
         Assert.That(resetBtn, Is.Not.Null, "Reset everything… button should be present in Settings.");
         resetBtn!.AsButton().Invoke();
-        Thread.Sleep(500);
 
         // ContentDialog confirmation lives in a popup tree — search the desktop.
-        var confirm = AppFixture.Automation.GetDesktop().FindFirstDescendant(
-            AppFixture.Automation.ConditionFactory.ByControlType(ControlType.Button)
-                .And(AppFixture.Automation.ConditionFactory.ByName("Reset everything")));
-        Assert.That(confirm, Is.Not.Null, "Reset confirmation dialog should expose a 'Reset everything' button.");
-        confirm!.AsButton().Invoke();
+        var confirm = WaitHelpers.WaitFor(
+            () => AppFixture.Automation.GetDesktop().FindFirstDescendant(
+                AppFixture.Automation.ConditionFactory.ByControlType(ControlType.Button)
+                    .And(AppFixture.Automation.ConditionFactory.ByName("Reset everything"))),
+            description: "'Reset everything' confirmation button");
+        confirm.AsButton().Invoke();
         Thread.Sleep(800);
 
         using var afterReset = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(AppFixture.SandboxRegistryPath);

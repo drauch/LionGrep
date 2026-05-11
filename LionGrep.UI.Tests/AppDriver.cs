@@ -120,18 +120,9 @@ internal sealed class AppDriver
             $"ToggleButton with AutomationId='{automationId}'").AsToggleButton();
 
     public ListBox ResultsList()
-    {
-        // Short retry: occasionally the UIA peer for the ListView isn't immediately present right
-        // after a search completes (the FilteredResults binding triggers a tree update on the next
-        // dispatch). One ~150ms re-poll is enough to ride that out.
-        var element = _window.FindFirstDescendant(_cf.ByAutomationId("ResultsList"));
-        if (element is null)
-        {
-            Thread.Sleep(150);
-            element = _window.FindFirstDescendant(_cf.ByAutomationId("ResultsList"));
-        }
-        return Required(element, "ResultsList").AsListBox();
-    }
+        => WaitHelpers.WaitFor(
+            () => _window.FindFirstDescendant(_cf.ByAutomationId("ResultsList")),
+            description: "ResultsList").AsListBox();
 
     private static AutomationElement Required(AutomationElement? element, string description)
         => element ?? throw new InvalidOperationException(
@@ -181,17 +172,10 @@ internal sealed class AppDriver
 
     /// <summary>Polls the status text until the "(running)" suffix disappears or we time out.</summary>
     public void WaitForSearchToFinish(TimeSpan? timeout = null)
-    {
-        var deadline = DateTime.UtcNow + (timeout ?? TimeSpan.FromSeconds(30));
-        while (DateTime.UtcNow < deadline)
-        {
-            var summary = ReadResultsSummary();
-            if (!string.IsNullOrEmpty(summary) && !summary.Contains("(running)"))
-                return;
-            Thread.Sleep(150);
-        }
-        throw new TimeoutException($"Search did not finish in {timeout?.TotalSeconds ?? 30}s.");
-    }
+        => WaitHelpers.WaitUntil(
+            () => { var s = ReadResultsSummary(); return !string.IsNullOrEmpty(s) && !s.Contains("(running)"); },
+            timeout ?? TimeSpan.FromSeconds(30),
+            "search to finish");
 
     public string ReadResultsSummary()
     {
