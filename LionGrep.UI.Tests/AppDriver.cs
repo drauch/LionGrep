@@ -120,8 +120,18 @@ internal sealed class AppDriver
             $"ToggleButton with AutomationId='{automationId}'").AsToggleButton();
 
     public ListBox ResultsList()
-        => Required(_window.FindFirstDescendant(_cf.ByAutomationId("ResultsList")),
-            "ResultsList").AsListBox();
+    {
+        // Short retry: occasionally the UIA peer for the ListView isn't immediately present right
+        // after a search completes (the FilteredResults binding triggers a tree update on the next
+        // dispatch). One ~150ms re-poll is enough to ride that out.
+        var element = _window.FindFirstDescendant(_cf.ByAutomationId("ResultsList"));
+        if (element is null)
+        {
+            Thread.Sleep(150);
+            element = _window.FindFirstDescendant(_cf.ByAutomationId("ResultsList"));
+        }
+        return Required(element, "ResultsList").AsListBox();
+    }
 
     private static AutomationElement Required(AutomationElement? element, string description)
         => element ?? throw new InvalidOperationException(
