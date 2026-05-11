@@ -17,11 +17,12 @@
     <NoWarn>$(NoWarn);MVVMTK0045</NoWarn>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>
-    <!-- Self-contained Windows App SDK: bundle the WinAppRuntime DLLs alongside the exe so the
-         unpackaged exe doesn't need a system-installed framework package whose build number
-         matches the NuGet Foundation version. Keeps tests/CI/fresh dev boxes launching reliably. -->
+    <!-- Framework-dependent build: the WinAppRuntime is NOT bundled. Smaller MSIX (~5 MB vs
+         ~80 MB) and the framework is shared across apps via the system-installed framework
+         package. Customer-facing MSIX gets the framework dep auto-injected by EnableMsixTooling.
+         Dev/CI machines must install windowsappruntimeinstall-x64.exe matching the NuGet version
+         (aka.ms/windowsappsdk/2.0/2.0.1/windowsappruntimeinstall-x64.exe at the time of writing). -->
     <WindowsPackageType>None</WindowsPackageType>
-    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
   </PropertyGroup>
 
   <ItemGroup>
