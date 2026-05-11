@@ -1,0 +1,220 @@
+name: Release
+
+# Fires on every push to a release/x.y.z branch. The branch name itself is the source of truth
+# for the version — no separate tag-bump commit needed. End-to-end: derive version → build →
+# test (Core + UI) → package an unsigned MSIX → publish a GitHub Release with the MSIX attached.
+on:
+  push:
+    branches:
+      - 'release/**'
+  # Manual rerun (e.g. to retry after a transient runner glitch). Requires the workflow file
+  # to be on a branch matching release/**.
+  workflow_dispatch:
+
+permissions:
+  contents: write   # creating the GitHub Release + tag
+
+env:
+  PLATFORM: x64
+  CONFIGURATION: Release
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      # ---- Version ----
+      # release/1.2.3 → 1.2.3 (assembly Version/SemVer) and 1.2.3.0 (Package.appxmanifest Identity
+      # Version, which must be a 4-part Win32 version). Any branch name that doesn't match the
+      # exact pattern is a workflow misuse — fail loudly so we don't ship a "0.0.0" release.
+      - name: Derive version from branch name
+        id: version
+        shell: pwsh
+        run: |
+          $branch = "${{ github.ref_name }}"
+          if ($branch -notmatch '^release/(\d+\.\d+\.\d+)$') {
+            Write-Error "Branch name must match release/x.y.z (got: $branch)"
+            exit 1
+          }
+          $v  = $matches[1]
+          $v4 = "$v.0"
+          "version=$v"   >> $env:GITHUB_OUTPUT
+          "version4=$v4" >> $env:GITHUB_OUTPUT
+          Write-Host "Version: $v (manifest: $v4)"
+
+      # ---- Toolchain ----
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      # ---- WindowsAppRuntime ----
+      # The framework-dependent build needs the WindowsAppRuntime package on the runner so the
+      # unpackaged exe (used by UI tests) can launch. The version here MUST match the
+      # Microsoft.WindowsAppSDK NuGet pin in Directory.Packages.props (currently 2.0.1).
+      - name: Install WindowsAppRuntime 2.0.1
+        shell: pwsh
+        run: |
+          $url = 'https://aka.ms/windowsappsdk/2.0/2.0.1/windowsappruntimeinstall-x64.exe'
+          $exe = "$env:RUNNER_TEMP\WindowsAppRuntimeInstall.exe"
+          Invoke-WebRequest -Uri $url -OutFile $exe -UseBasicParsing
+          & $exe --quiet
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "WindowsAppRuntime install failed with exit code $LASTEXITCODE"
+            exit $LASTEXITCODE
+          }
+
+      # ---- Manifest version patch ----
+      # The MSIX Identity Version is hard-coded in Package.appxmanifest. Patch it in-place from
+      # the branch-derived version before the MSIX is generated.
+      - name: Patch Package.appxmanifest version
+        shell: pwsh
+        run: |
+          $path = 'LionGrep/Package.appxmanifest'
+          [xml]$xml = Get-Content $path
+          $xml.Package.Identity.Version = "${{ steps.version.outputs.version4 }}"
+          $xml.Save((Resolve-Path $path))
+          Write-Host "Patched manifest Identity Version → ${{ steps.version.outputs.version4 }}"
+
+      # ---- Build ----
+      - name: Restore
+        run: dotnet restore LionGrep.slnx
+
+      - name: Build solution
+        run: >
+          dotnet build LionGrep.slnx
+          -c ${{ env.CONFIGURATION }}
+          -p:Platform=${{ env.PLATFORM }}
+          --no-restore
+          -p:Version=${{ steps.version.outputs.version }}
+          -p:AssemblyVersion=${{ steps.version.outputs.version4 }}
+          -p:FileVersion=${{ steps.version.outputs.version4 }}
+          -p:InformationalVersion=${{ steps.version.outputs.version }}
+
+      # ---- Tests ----
+      - name: Core tests
+        run: >
+          dotnet test LionGrep.Core.Tests/LionGrep.Core.Tests.csproj
+          -c ${{ env.CONFIGURATION }}
+          --no-build
+          --logger "trx;LogFileName=core-tests.trx"
+          --results-directory artifacts/test-results
+
+      - name: UI tests
+        run: >
+          dotnet test LionGrep.UI.Tests/LionGrep.UI.Tests.csproj
+          -c ${{ env.CONFIGURATION }}
+          -p:Platform=${{ env.PLATFORM }}
+          --no-build
+          --logger "trx;LogFileName=ui-tests.trx"
+          --results-directory artifacts/test-results
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: artifacts/test-results
+
+      # ---- MSIX ----
+      # Use MSBuild for the Appx packaging step. dotnet build doesn't trigger the Appx targets by
+      # itself for single-project MSIX. AppxPackageSigningEnabled=false keeps it unsigned for now
+      # (SignPath step gets inserted here in a later iteration).
+      - name: Package unsigned MSIX
+        shell: pwsh
+        run: |
+          $outDir = "$env:GITHUB_WORKSPACE\artifacts\msix"
+          New-Item -ItemType Directory -Force -Path $outDir | Out-Null
+          msbuild LionGrep/LionGrep.csproj `
+            /p:Configuration=${{ env.CONFIGURATION }} `
+            /p:Platform=${{ env.PLATFORM }} `
+            /p:GenerateAppxPackageOnBuild=true `
+            /p:AppxPackageSigningEnabled=false `
+            /p:UapAppxPackageBuildMode=SideloadOnly `
+            /p:AppxBundle=Never `
+            /p:AppxPackageDir="$outDir\" `
+            /p:Version=${{ steps.version.outputs.version }} `
+            /p:AssemblyVersion=${{ steps.version.outputs.version4 }} `
+            /p:FileVersion=${{ steps.version.outputs.version4 }}
+
+      - name: Stage MSIX with friendly name
+        id: msix
+        shell: pwsh
+        run: |
+          $found = Get-ChildItem "artifacts/msix" -Recurse -Filter "*.msix" | Select-Object -First 1
+          if (-not $found) {
+            Write-Error "No .msix produced under artifacts/msix"
+            exit 1
+          }
+          $name = "LionGrep-${{ steps.version.outputs.version }}-${{ env.PLATFORM }}.msix"
+          $dest = "artifacts/$name"
+          Copy-Item $found.FullName $dest
+          "path=$dest" >> $env:GITHUB_OUTPUT
+          Write-Host "Staged: $dest ($([Math]::Round((Get-Item $dest).Length / 1MB, 2)) MB)"
+
+      - name: Upload MSIX as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: LionGrep-${{ steps.version.outputs.version }}-${{ env.PLATFORM }}
+          path: ${{ steps.msix.outputs.path }}
+
+      # ---- Release notes ----
+      # Pull the section for this version out of CHANGELOG.md ("Keep a Changelog" format).
+      # Fail loudly if there's no matching section — release notes should never be silently empty.
+      - name: Extract release notes from CHANGELOG.md
+        id: changelog
+        shell: pwsh
+        run: |
+          if (-not (Test-Path 'CHANGELOG.md')) {
+            Write-Error "CHANGELOG.md is missing — add it before cutting a release."
+            exit 1
+          }
+          $version = '${{ steps.version.outputs.version }}'
+          $content = Get-Content 'CHANGELOG.md' -Raw
+          # Match "## [1.2.3]" (with optional date suffix on the same line), capture up to the
+          # next "## [..." section header or end of file. (?s) = . matches newlines.
+          $escaped = [Regex]::Escape($version)
+          $pattern = "(?s)##\s*\[$escaped\][^\n]*\n(.+?)(?=\n##\s*\[|\z)"
+          if ($content -notmatch $pattern) {
+            Write-Error "CHANGELOG.md has no section for version $version. Add a '## [$version] - YYYY-MM-DD' heading."
+            exit 1
+          }
+          $notes = $matches[1].Trim()
+          # Multi-line value via GITHUB_OUTPUT requires a delimited heredoc form.
+          $delim = "EOF_NOTES_$([Guid]::NewGuid().ToString('N'))"
+          "notes<<$delim" >> $env:GITHUB_OUTPUT
+          $notes          >> $env:GITHUB_OUTPUT
+          $delim          >> $env:GITHUB_OUTPUT
+          Write-Host "Extracted $((($notes -split "`n").Length)) line(s) of release notes for $version"
+
+      # ---- GitHub Release ----
+      # Tag = v<version>. Body = install/prereq blurb + the CHANGELOG section. The MSIX is
+      # attached as a release asset.
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: LionGrep v${{ steps.version.outputs.version }}
+          draft: false
+          prerelease: false
+          body: |
+            ## Install (unsigned MSIX)
+
+            Run in an elevated PowerShell:
+            ```powershell
+            Add-AppxPackage -Path .\LionGrep-${{ steps.version.outputs.version }}-${{ env.PLATFORM }}.msix -AllowUntrusted
+            ```
+
+            ## Prerequisites
+            - Windows 10 1809 (build 17763) or later
+            - [Microsoft.WindowsAppRuntime 2.0.1](https://aka.ms/windowsappsdk/2.0/2.0.1/windowsappruntimeinstall-x64.exe) (Windows installs this automatically when the MSIX is signed; until then, install manually)
+
+            ## Changes
+
+            ${{ steps.changelog.outputs.notes }}
+          files: ${{ steps.msix.outputs.path }}
