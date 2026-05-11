@@ -140,12 +140,13 @@ internal sealed class AppDriver
     public void ResetForm()
     {
         // Click the two Reset buttons (one in WHAT header, one in FILTER header).
-        foreach (var btn in _window.FindAllDescendants(_cf.ByControlType(ControlType.Button)))
+        // Filter by Name at the UIA level: some WinUI buttons don't expose the Name property,
+        // and reading .Name on those throws PropertyNotSupportedException. Letting UIA do the
+        // exact-match filter sidesteps that — non-Name elements just don't match.
+        var resetCondition = _cf.ByControlType(ControlType.Button).And(_cf.ByName("Reset"));
+        foreach (var btn in _window.FindAllDescendants(resetCondition))
         {
-            if ((btn.Name ?? "").Equals("Reset", StringComparison.Ordinal))
-            {
-                btn.AsButton().Invoke();
-            }
+            btn.AsButton().Invoke();
         }
         SetText("SearchInBox", AppFixture.ReadOnlyCorpus);
     }

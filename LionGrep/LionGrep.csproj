@@ -17,6 +17,11 @@
     <NoWarn>$(NoWarn);MVVMTK0045</NoWarn>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>
+    <!-- Self-contained Windows App SDK: bundle the WinAppRuntime DLLs alongside the exe so the
+         unpackaged exe doesn't need a system-installed framework package whose build number
+         matches the NuGet Foundation version. Keeps tests/CI/fresh dev boxes launching reliably. -->
+    <WindowsPackageType>None</WindowsPackageType>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
   </PropertyGroup>
 
   <ItemGroup>

@@ -27,7 +27,9 @@ public class SettingsWindowTests
         Thread.Sleep(800);
 
         // Find the Settings window — it has a distinctive title.
-        var settingsWindow = AppFixture.App.GetAllTopLevelWindows(AppFixture.Automation)
+        var settingsWindow = AppFixture.Automation.GetDesktop()
+            .FindAllChildren(AppFixture.Automation.ConditionFactory.ByControlType(ControlType.Window))
+            .Select(w => w.AsWindow())
             .FirstOrDefault(w => (w.Title ?? "").Contains("Settings", StringComparison.OrdinalIgnoreCase));
         Assert.That(settingsWindow, Is.Not.Null, "Settings window did not open.");
 
@@ -87,7 +89,9 @@ public class SettingsWindowTests
         settingsBtn!.AsButton().Invoke();
         Thread.Sleep(800);
 
-        var settingsWindow = AppFixture.App.GetAllTopLevelWindows(AppFixture.Automation)
+        var settingsWindow = AppFixture.Automation.GetDesktop()
+            .FindAllChildren(AppFixture.Automation.ConditionFactory.ByControlType(ControlType.Window))
+            .Select(w => w.AsWindow())
             .FirstOrDefault(w => (w.Title ?? "").Contains("Settings", StringComparison.OrdinalIgnoreCase));
         Assert.That(settingsWindow, Is.Not.Null, "Settings window did not open.");
 

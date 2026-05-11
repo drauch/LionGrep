@@ -1,4 +1,3 @@
-using FlaUI.Core;
 using FlaUI.Core.AutomationElements;
 using FlaUI.UIA3;
 using Microsoft.Win32;
@@ -11,6 +10,11 @@ namespace LionGrep.UI.Tests;
 /// Assembly-level setup. Launches LionGrep.exe once for the entire run, then closes it at the end.
 /// Tests share the running process; each test must reset the form state itself before running.
 ///
+/// Why no FlaUI Application object: WinAppSDK 2.0 self-contained startup re-spawns the app under
+/// a new PID one or more times before settling, so tracking the PID Process.Start returns is futile.
+/// Instead, we poll the process list for a LionGrep instance with a stable MainWindowHandle and
+/// wrap that HWND with UIA. From there, everything is HWND-rooted and process-lifecycle-agnostic.
+///
 /// State sandboxing: each run picks a fresh subkey under HKCU\Software\LionGrepUITests\&lt;guid&gt;
 /// and passes it to the app via --alternate-registry-key. The developer's real
 /// HKCU\Software\LionGrep is therefore never read or written during the run. The sandbox subkey
@@ -19,7 +23,6 @@ namespace LionGrep.UI.Tests;
 [SetUpFixture]
 public sealed class AppFixture
 {
-    public static Application App { get; private set; } = null!;
     public static UIA3Automation Automation { get; private set; } = null!;
     public static Window MainWindow { get; private set; } = null!;
     public static string ReadOnlyCorpus { get; private set; } = string.Empty;
@@ -39,10 +42,21 @@ public sealed class AppFixture
         psi.ArgumentList.Add("--alternate-registry-key");
         psi.ArgumentList.Add(SandboxRegistryPath);
 
-        App = Application.Launch(psi);
+        // Fire-and-forget. WinAppSDK 2.0 self-contained startup forks the process at least once;
+        // tracking the launcher PID is useless. The launcher exits within ~1s of spawn.
+        using (var launcher = Process.Start(psi)
+            ?? throw new InvalidOperationException("Failed to start LionGrep.exe."))
+        {
+            launcher.Dispose();
+        }
+
+        var exeName = Path.GetFileNameWithoutExtension(exe);
+        var hwnd = WaitForStableWindow(exeName, TimeSpan.FromSeconds(30))
+            ?? throw new InvalidOperationException(
+                $"No stable {exeName} process with a main window appeared within 30s.");
+
         Automation = new UIA3Automation();
-        MainWindow = App.GetMainWindow(Automation, TimeSpan.FromSeconds(20))
-            ?? throw new InvalidOperationException("LionGrep window did not appear within 20s.");
+        MainWindow = Automation.FromHandle(hwnd).AsWindow();
 
         // Give the WinUI dispatcher a beat to finish first-render layout (form-fit deferred dispatch).
         Thread.Sleep(2_000);
@@ -54,9 +68,16 @@ public sealed class AppFixture
         // Catching System.Exception is intentional: teardown must succeed even if FlaUI throws
         // anything from a half-collapsed UIA tree or an already-dead test process.
 #pragma warning disable RCS1075, IDISP007
-        try { App.Close(); App.WaitWhileMainHandleIsMissing(TimeSpan.FromSeconds(5)); } catch (Exception) { /* ignore */ }
-        try { App.Dispose(); } catch (Exception) { /* ignore */ }
-        try { Automation.Dispose(); } catch (Exception) { /* ignore */ }
+        try { MainWindow?.Close(); } catch (Exception) { /* ignore */ }
+        try { Automation?.Dispose(); } catch (Exception) { /* ignore */ }
+
+        // Belt-and-braces: if Close didn't terminate the app (e.g. a modal blocked it), nuke any
+        // surviving LionGrep processes so the next run starts clean.
+        foreach (var p in Process.GetProcessesByName("LionGrep"))
+        {
+            try { p.Kill(entireProcessTree: true); } catch (Exception) { /* best effort */ }
+            try { p.Dispose(); } catch (Exception) { /* best effort */ }
+        }
 #pragma warning restore RCS1075, IDISP007
 
         // Wipe the sandbox subkey so artefacts of this run don't accumulate. Best-effort —
@@ -104,5 +125,44 @@ public sealed class AppFixture
         throw new FileNotFoundException(
             "Could not find LionGrep.exe in any sibling LionGrep/bin/x64/{Debug,Release}/.../win-x64/. " +
             "Build it first: `dotnet build LionGrep/LionGrep.csproj -c Debug -p:Platform=x64`.");
+    }
+
+    /// <summary>Polls for a process named <paramref name="exeName"/> with a non-zero main window
+    /// handle, then waits a settle interval and re-checks the SAME pid/hwnd still exists. If the
+    /// process has been replaced (WinAppSDK re-spawn — the launcher forks into 2+ generations
+    /// before settling), we loop. Returns the stable HWND or null on timeout.</summary>
+    private static IntPtr? WaitForStableWindow(string exeName, TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        while (DateTime.UtcNow < deadline)
+        {
+            (int pid, IntPtr hwnd)? snapshot = null;
+            foreach (var p in Process.GetProcessesByName(exeName))
+            {
+                using (p)
+                {
+                    if (snapshot is not null) continue;
+                    try
+                    {
+                        p.Refresh();
+                        if (p.MainWindowHandle != IntPtr.Zero) snapshot = (p.Id, p.MainWindowHandle);
+                    }
+                    catch (InvalidOperationException) { /* exited mid-enumeration */ }
+                }
+            }
+
+            if (snapshot is null) { Thread.Sleep(200); continue; }
+
+            // Settle: if the same pid/hwnd still resolves after a delay, we trust it.
+            Thread.Sleep(1500);
+            try
+            {
+                using var p = Process.GetProcessById(snapshot.Value.pid);
+                p.Refresh();
+                if (p.MainWindowHandle == snapshot.Value.hwnd) return snapshot.Value.hwnd;
+            }
+            catch (ArgumentException) { /* re-spawn happened during the settle — loop */ }
+        }
+        return null;
     }
 }
