@@ -92,6 +92,7 @@ public sealed class FileEnumerator
         return relative.Replace('\\', '/');
     }
 
+
     private static FileAttributes ComputeAttributesToSkip(FileEnumerationOptions options)
     {
         FileAttributes skip = FileAttributes.None;

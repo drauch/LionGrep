@@ -30,14 +30,14 @@ public class SortTests
         // Initial: not sorted by name. Click → Ascending → arrow ▲.
         nameHeader!.Click();
         Thread.Sleep(150);
-        Assert.That(nameHeader.Name ?? "", Does.Contain("▲"));
+        Assert.That(nameHeader.TryGetName() ?? "", Does.Contain("▲"));
 
         nameHeader.Click();
         Thread.Sleep(150);
-        Assert.That(nameHeader.Name ?? "", Does.Contain("▼"));
+        Assert.That(nameHeader.TryGetName() ?? "", Does.Contain("▼"));
 
         nameHeader.Click();
         Thread.Sleep(150);
-        Assert.That(nameHeader.Name ?? "", Does.Not.Contain("▲").And.Not.Contains("▼"));
+        Assert.That(nameHeader.TryGetName() ?? "", Does.Not.Contain("▲").And.Not.Contains("▼"));
     }
 }

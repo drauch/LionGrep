@@ -41,7 +41,7 @@ public class HotkeyTests
         _driver.TriggerSearch();
         _driver.WaitForSearchToFinish();
 
-        _driver.ToggleButtonByAutomationId("SearchInResultsToggle").Invoke();
+        _driver.ToggleButtonByAutomationId("SearchInResultsToggle").Toggle();
         Thread.Sleep(150);
 
         // 1st Escape: collapse filter.

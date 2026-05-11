@@ -16,7 +16,8 @@
         <MicaBackdrop />
     </Window.SystemBackdrop>
 
-    <Grid Padding="14" RowSpacing="10">
+    <Grid Padding="14" RowSpacing="10"
+          AutomationProperties.AutomationId="SettingsWindowRoot">
         <Grid.Resources>
             <lc:NullableDateTimeOffsetConverter x:Key="NullableDateTimeOffsetConverter" />
         </Grid.Resources>

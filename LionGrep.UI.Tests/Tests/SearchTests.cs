@@ -118,7 +118,7 @@ public class SearchTests
         var rows = _driver.ResultsList().Items;
         foreach (var row in rows)
         {
-            Assert.That(row.Name ?? "", Does.Not.Contain("skipme"),
+            Assert.That(row.TryGetName() ?? "", Does.Not.Contain("skipme"),
                 "ExcludePaths should have pruned the 'skipme' directory entirely.");
         }
     }

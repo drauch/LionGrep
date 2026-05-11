@@ -28,14 +28,14 @@ public class FilterPanelTests
     public void FilterToggle_OpensPanel_AndClosesOnSecondClick()
     {
         var toggle = _driver.ToggleButtonByAutomationId("SearchInResultsToggle");
-        toggle.Invoke();   // open
+        toggle.Toggle();   // open
         Thread.Sleep(150);
 
         // FilterBox should now be present and visible.
         var filterBox = _driver.TextBox("FilterBox");
         Assert.That(filterBox.IsAvailable, Is.True);
 
-        toggle.Invoke();   // close
+        toggle.Toggle();   // close
         Thread.Sleep(150);
     }
 
@@ -44,7 +44,7 @@ public class FilterPanelTests
     {
         var initialCount = _driver.ResultRowCount();
 
-        _driver.ToggleButtonByAutomationId("SearchInResultsToggle").Invoke();
+        _driver.ToggleButtonByAutomationId("SearchInResultsToggle").Toggle();
         Thread.Sleep(150);
         _driver.SetText("FilterBox", "UserService");
         Thread.Sleep(400);   // debounce 250ms + slack
@@ -57,7 +57,7 @@ public class FilterPanelTests
     [Test]
     public void Escape_FirstClosesFilter_ThenRestoresFormRow()
     {
-        _driver.ToggleButtonByAutomationId("SearchInResultsToggle").Invoke();
+        _driver.ToggleButtonByAutomationId("SearchInResultsToggle").Toggle();
         Thread.Sleep(150);
         _driver.SetText("FilterBox", "class");
         Thread.Sleep(400);
@@ -75,7 +75,7 @@ public class FilterPanelTests
     [Test]
     public void AlsoMatchFilePath_TogglesPathInclusion()
     {
-        _driver.ToggleButtonByAutomationId("SearchInResultsToggle").Invoke();
+        _driver.ToggleButtonByAutomationId("SearchInResultsToggle").Toggle();
         Thread.Sleep(150);
 
         // Type something that matches a path component but not any line text.

@@ -32,7 +32,75 @@ internal sealed class AppDriver
         => Required(_window.FindFirstDescendant(_cf.ByControlType(ControlType.CheckBox).And(_cf.ByName(content))),
             $"CheckBox with content '{content}'").AsCheckBox();
 
+    /// <summary>Best-effort window focus that swallows the UIA "subscribers couldn't invoke"
+    /// exception that occasionally fires on Focus() late in long test runs (HWND may be in a
+    /// transient state). Returning without a focused window is fine — the subsequent keyboard
+    /// input lands on whatever has focus, which is usually still the LionGrep window.</summary>
+    private void TryFocusWindow()
+    {
+        try { _window.Focus(); Thread.Sleep(50); }
+        catch (System.Runtime.InteropServices.COMException) { /* HWND in flux, skip */ }
+    }
+
+    /// <summary>Restores the form row (collapsed after any search/replace). Tries every recovery
+    /// path in turn so that whichever one works lands the form expanded. Cheap and idempotent.</summary>
+    public void EnsureFormVisible()
+    {
+        // 1) Click the in-app "Show query" button when present — direct, no keyboard focus dance.
+        var showQuery = _window.FindFirstDescendant(_cf.ByAutomationId("ShowQueryButton"));
+        if (showQuery is not null && !showQuery.IsOffscreen)
+        {
+#pragma warning disable RCS1075
+            try { showQuery.AsButton().Invoke(); }
+            catch (Exception) { /* try other paths */ }
+#pragma warning restore RCS1075
+        }
+
+        // 2) Belt-and-braces keyboard Escape × 2 — first closes filter panel if open, second
+        // triggers RestoreFormRow via the app's accelerator. No-ops if form is already shown.
+        TryFocusWindow();
+        FlaUI.Core.Input.Keyboard.Press(FlaUI.Core.WindowsAPI.VirtualKeyShort.ESCAPE);
+        Thread.Sleep(120);
+        FlaUI.Core.Input.Keyboard.Press(FlaUI.Core.WindowsAPI.VirtualKeyShort.ESCAPE);
+        Thread.Sleep(400);   // give the WinUI dispatcher time to relayout + refresh the UIA tree
+    }
+
     public Button ButtonByContent(string content)
+    {
+        // Some buttons have stable AutomationIds wired in XAML — prefer those because UIA's Name
+        // for buttons whose content is a StackPanel(FontIcon + TextBlock) can be empty or weirdly
+        // composed depending on the WinUI build.
+        var byId = TryButtonByAutomationIdForContent(content);
+        if (byId is not null) return byId;
+
+        var found = FindButtonByContent(content);
+        if (found is not null) return found;
+        EnsureFormVisible();
+        // Re-check the AutomationId map first after the form is restored.
+        byId = TryButtonByAutomationIdForContent(content);
+        if (byId is not null) return byId;
+        found = FindButtonByContent(content);
+        if (found is not null) return found;
+        throw new InvalidOperationException($"No Button found with content matching '{content}'.");
+    }
+
+    /// <summary>Maps common content strings to the AutomationIds set in MainWindow.xaml. Returns
+    /// the resolved Button or null if there's no mapping (or the element isn't in the tree yet).</summary>
+    private Button? TryButtonByAutomationIdForContent(string content) => content switch
+    {
+        "Undo" => FindButtonByAutomationId("UndoButton"),
+        "Expand all" => FindButtonByAutomationId("ExpandAllButton"),
+        "Collapse all" => FindButtonByAutomationId("CollapseAllButton"),
+        _ => null,
+    };
+
+    private Button? FindButtonByAutomationId(string automationId)
+    {
+        var e = _window.FindFirstDescendant(_cf.ByAutomationId(automationId));
+        return e?.AsButton();
+    }
+
+    private Button? FindButtonByContent(string content)
     {
         // Buttons in our UI typically host a StackPanel(FontIcon + TextBlock) for the content; the
         // exposed UIA Name is usually the inner TextBlock text. Try ByName first; fall back to scanning.
@@ -41,15 +109,15 @@ internal sealed class AppDriver
 
         foreach (var b in _window.FindAllDescendants(_cf.ByControlType(ControlType.Button)))
         {
-            if ((b.Name ?? "").Contains(content, StringComparison.OrdinalIgnoreCase))
+            if ((b.TryGetName() ?? "").Contains(content, StringComparison.OrdinalIgnoreCase))
                 return b.AsButton();
         }
-        throw new InvalidOperationException($"No Button found with content matching '{content}'.");
+        return null;
     }
 
-    public Button ToggleButtonByAutomationId(string automationId)
+    public ToggleButton ToggleButtonByAutomationId(string automationId)
         => Required(_window.FindFirstDescendant(_cf.ByAutomationId(automationId)),
-            $"ToggleButton with AutomationId='{automationId}'").AsButton();
+            $"ToggleButton with AutomationId='{automationId}'").AsToggleButton();
 
     public ListBox ResultsList()
         => Required(_window.FindFirstDescendant(_cf.ByAutomationId("ResultsList")),
@@ -74,8 +142,11 @@ internal sealed class AppDriver
 
     public void SetCheck(string content, bool isChecked)
     {
+        // Use the Toggle pattern instead of Click() — Click needs a clickable point, which fails
+        // for off-screen or not-yet-laid-out controls (common when the WHAT panel hasn't been
+        // scrolled into view). Toggle goes through UIA directly with no mouse coords.
         var cb = CheckBoxByContent(content);
-        if (cb.IsChecked != isChecked) cb.Click();
+        if (cb.IsChecked != isChecked) cb.Toggle();
     }
 
     // ---- Search lifecycle --------------------------------------------------
@@ -114,14 +185,24 @@ internal sealed class AppDriver
 
     public string ReadResultsSummary()
     {
-        // Status text isn't named; find any TextBlock whose text matches our format.
+        // Prefer the dedicated TextBlock by AutomationId — added in XAML so we don't have to
+        // disambiguate from button labels like "Undo".
+        var direct = _window.FindFirstDescendant(_cf.ByAutomationId("ResultsSummary"));
+        if (direct is not null)
+        {
+            var name = direct.TryGetName();
+            if (!string.IsNullOrEmpty(name)) return name!;
+        }
+
+        // Fallback: scan TextBlocks for known summary patterns. Be specific so the "Undo" button
+        // label (a bare "Undo") doesn't match the "Undo: restored …" status format.
         foreach (var tb in _window.FindAllDescendants(_cf.ByControlType(ControlType.Text)))
         {
-            var t = tb.Name ?? string.Empty;
+            var t = tb.TryGetName() ?? string.Empty;
             if (t.Contains("matches in", StringComparison.OrdinalIgnoreCase)
                 || t.StartsWith("Replaced ", StringComparison.OrdinalIgnoreCase)
                 || t.StartsWith("Cancelled", StringComparison.OrdinalIgnoreCase)
-                || t.StartsWith("Undo", StringComparison.OrdinalIgnoreCase)
+                || t.StartsWith("Undo:", StringComparison.OrdinalIgnoreCase)
                 || t.Contains("No search run yet", StringComparison.OrdinalIgnoreCase)
                 || t.Contains("Provide ", StringComparison.OrdinalIgnoreCase))
             {
@@ -139,15 +220,56 @@ internal sealed class AppDriver
     /// to the read-only corpus. Use at the top of every test for predictable starting state.</summary>
     public void ResetForm()
     {
-        // Click the two Reset buttons (one in WHAT header, one in FILTER header).
-        // Filter by Name at the UIA level: some WinUI buttons don't expose the Name property,
-        // and reading .Name on those throws PropertyNotSupportedException. Letting UIA do the
-        // exact-match filter sidesteps that — non-Name elements just don't match.
+        // If a previous test triggered a search/replace, the form row is collapsed and
+        // SearchInBox is hidden from the visible UIA tree. EnsureFormVisible prefers clicking
+        // the in-app "Show query" button when present (more reliable than keyboard accelerators).
+        EnsureFormVisible();
+
+        // Click the WHAT/FILTER Reset buttons. They may or may not fire — UIA Invoke on Reset
+        // buttons inside a collapsed form has been observed to silently no-op. The explicit
+        // filter-widget reset below is the belt-and-braces guarantee.
         var resetCondition = _cf.ByControlType(ControlType.Button).And(_cf.ByName("Reset"));
         foreach (var btn in _window.FindAllDescendants(resetCondition))
         {
             btn.AsButton().Invoke();
         }
+
+        // Belt-and-braces: explicitly normalize filter widgets so leaked state from one test
+        // (e.g. BetweenSizeFilter setting SizeMode=Between/200KB) doesn't break the next.
+        ResetFilterWidgetsExplicitly();
+
         SetText("SearchInBox", AppFixture.ReadOnlyCorpus);
+    }
+
+    /// <summary>Forces every filter widget back to a permissive default by manipulating them
+    /// directly through UIA, bypassing the Reset-button-bound commands. Idempotent.</summary>
+    private void ResetFilterWidgetsExplicitly()
+    {
+        // Size and Date ComboBoxes: index 0 = "All sizes" / "All dates", which disables those
+        // filters in BuildSearchOptions (returns null).
+        var combos = _window.FindAllDescendants(_cf.ByControlType(ControlType.ComboBox));
+        // Order in the form: Size is the first ComboBox, Date is the second. (See MainWindow.xaml.)
+        if (combos.Length >= 1)
+        {
+            try { combos[0].AsComboBox().Select(0); } catch { /* control may be off-tree if form is collapsed */ }
+        }
+        if (combos.Length >= 2)
+        {
+            try { combos[1].AsComboBox().Select(0); } catch { /* same */ }
+        }
+
+        // FileNames / ExcludePaths text fields: blank to disable filtering.
+        foreach (var id in new[] { "FileNamesBox", "ExcludePathsBox" })
+        {
+            var tb = _window.FindFirstDescendant(_cf.ByAutomationId(id));
+            if (tb is null) continue;
+            try
+            {
+                var box = tb.AsTextBox();
+                box.Focus();
+                box.Text = "";
+            }
+            catch { /* element may not be available; ignore */ }
+        }
     }
 }

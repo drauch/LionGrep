@@ -27,6 +27,9 @@ public class ReplaceTests
         _driver.SetText("SearchInBox", _isolatedDir);
         _driver.SetText("SearchPatternBox", "alpha");
         _driver.SetCheck("Case sensitive", true);
+        // PreserveCase defaults to true in the ViewModel; without disabling it, replacing
+        // "alpha" with "OMEGA" yields "omega" (case copied from match) and the test fails.
+        _driver.SetCheck("Preserve case", false);
         _driver.SetText("ReplacePatternBox", "OMEGA");
         _driver.TriggerSearch();
         _driver.WaitForSearchToFinish();
@@ -39,26 +42,37 @@ public class ReplaceTests
     }
 
     [Test]
-    public void CtrlAltEnter_ReplacesImmediately_NoBackup()
+    public void CtrlAltEnter_OpensDialog_AndReplaceWithoutBackupsWorks()
     {
+        // Ctrl+Alt+Enter now opens the same 3-way confirmation dialog as the main Replace button
+        // (per UX request). The "no backups" path is reachable via the dialog's secondary button.
         _driver.TriggerReplaceImmediate();
-        Thread.Sleep(800);   // give the replace a moment
+        Thread.Sleep(500);
+
+        var noBak = AppFixture.Automation.GetDesktop().FindFirstDescendant(
+            AppFixture.Automation.ConditionFactory.ByControlType(ControlType.Button)
+                .And(AppFixture.Automation.ConditionFactory.ByName("Replace w/o backups")));
+        Assert.That(noBak, Is.Not.Null, "3-way dialog should expose 'Replace w/o backups'.");
+        noBak!.AsButton().Invoke();
+        Thread.Sleep(800);
 
         Assert.That(File.ReadAllText(Path.Combine(_isolatedDir, "a.cs")), Is.EqualTo("OMEGA bravo OMEGA\n"));
         Assert.That(File.ReadAllText(Path.Combine(_isolatedDir, "b.cs")), Is.EqualTo("OMEGA charlie\n"));
-        Assert.That(File.Exists(Path.Combine(_isolatedDir, "a.cs.lgbak")), Is.False, "Bypass route must not write backup files.");
+        Assert.That(File.Exists(Path.Combine(_isolatedDir, "a.cs.lgbak")), Is.False, "No-backup path must not write backup files.");
     }
 
     [Test]
     public void ReplaceButton_OpensThreeWayDialog_CancelLeavesFilesUntouched()
     {
         var originalA = File.ReadAllText(Path.Combine(_isolatedDir, "a.cs"));
-        var replaceBtn = _driver.ButtonByContent("Replace…");
-        replaceBtn.Invoke();
+        var replaceBtn = AppFixture.MainWindow.FindFirstDescendant(
+            AppFixture.Automation.ConditionFactory.ByAutomationId("ReplaceSplit"));
+        Assert.That(replaceBtn, Is.Not.Null, "ReplaceSplit not found.");
+        replaceBtn!.AsButton().Invoke();
         Thread.Sleep(400);
 
         // Click the Cancel button on the ContentDialog.
-        var cancel = AppFixture.MainWindow.FindFirstDescendant(
+        var cancel = AppFixture.Automation.GetDesktop().FindFirstDescendant(
             AppFixture.Automation.ConditionFactory.ByControlType(ControlType.Button)
                 .And(AppFixture.Automation.ConditionFactory.ByName("Cancel")));
         Assert.That(cancel, Is.Not.Null, "3-way dialog should expose a Cancel button.");
@@ -74,10 +88,12 @@ public class ReplaceTests
         // R14 — Undo's "failed++" path is exercised when the user manually deletes a backup file
         // between the replace and the undo. Verify the summary acknowledges the failure rather
         // than silently restoring zero files.
-        var replaceBtn = _driver.ButtonByContent("Replace…");
-        replaceBtn.Invoke();
+        var replaceBtn = AppFixture.MainWindow.FindFirstDescendant(
+            AppFixture.Automation.ConditionFactory.ByAutomationId("ReplaceSplit"));
+        Assert.That(replaceBtn, Is.Not.Null, "ReplaceSplit not found.");
+        replaceBtn!.AsButton().Invoke();
         Thread.Sleep(400);
-        var primary = AppFixture.MainWindow.FindFirstDescendant(
+        var primary = AppFixture.Automation.GetDesktop().FindFirstDescendant(
             AppFixture.Automation.ConditionFactory.ByControlType(ControlType.Button)
                 .And(AppFixture.Automation.ConditionFactory.ByName("Replace with backups")));
         primary!.AsButton().Invoke();
@@ -100,12 +116,14 @@ public class ReplaceTests
     {
         var originalA = File.ReadAllText(Path.Combine(_isolatedDir, "a.cs"));
 
-        var replaceBtn = _driver.ButtonByContent("Replace…");
-        replaceBtn.Invoke();
+        var replaceBtn = AppFixture.MainWindow.FindFirstDescendant(
+            AppFixture.Automation.ConditionFactory.ByAutomationId("ReplaceSplit"));
+        Assert.That(replaceBtn, Is.Not.Null, "ReplaceSplit not found.");
+        replaceBtn!.AsButton().Invoke();
         Thread.Sleep(400);
 
         // Click "Replace with backups" (the Primary button on the dialog).
-        var primary = AppFixture.MainWindow.FindFirstDescendant(
+        var primary = AppFixture.Automation.GetDesktop().FindFirstDescendant(
             AppFixture.Automation.ConditionFactory.ByControlType(ControlType.Button)
                 .And(AppFixture.Automation.ConditionFactory.ByName("Replace with backups")));
         Assert.That(primary, Is.Not.Null, "3-way dialog should expose 'Replace with backups'.");

@@ -81,10 +81,16 @@
                            VerticalAlignment="Center" />
             </StackPanel>
             <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="2" Margin="0,2,4,2">
-                <Button Style="{StaticResource ToolIconButton}" ToolTipService.ToolTip="Settings" Click="OnSettingsClicked">
+                <Button x:Name="SettingsButton" Style="{StaticResource ToolIconButton}"
+                        ToolTipService.ToolTip="Settings" Click="OnSettingsClicked"
+                        AutomationProperties.AutomationId="SettingsButton"
+                        AutomationProperties.Name="Settings">
                     <FontIcon Glyph="&#xE713;" FontSize="14" />
                 </Button>
-                <Button Style="{StaticResource ToolIconButton}" ToolTipService.ToolTip="About" Click="OnAboutClicked">
+                <Button x:Name="AboutButton" Style="{StaticResource ToolIconButton}"
+                        ToolTipService.ToolTip="About" Click="OnAboutClicked"
+                        AutomationProperties.AutomationId="AboutButton"
+                        AutomationProperties.Name="About">
                     <FontIcon Glyph="&#xE897;" FontSize="14" />
                 </Button>
             </StackPanel>
@@ -348,6 +354,8 @@
                         </StackPanel>
                     </Button>
                     <SplitButton x:Name="ReplaceSplit" Click="OnReplaceSplitClicked"
+                                 AutomationProperties.AutomationId="ReplaceSplit"
+                                 AutomationProperties.Name="Replace"
                                  IsEnabled="{x:Bind ViewModel.IsReplaceEnabled, Mode=OneWay}"
                                  Visibility="{x:Bind ViewModel.ReplaceButtonVisibility, Mode=OneWay}"
                                  ToolTipService.ToolTip="Choose Replace, Replace with backups, or Cancel (Ctrl+Alt+Enter)">
@@ -374,7 +382,8 @@
                             <TextBlock Text="Cancel" />
                         </StackPanel>
                     </Button>
-                    <Button Command="{x:Bind ViewModel.UndoReplaceCommand}"
+                    <Button x:Name="UndoButton" AutomationProperties.AutomationId="UndoButton"
+                            Command="{x:Bind ViewModel.UndoReplaceCommand}"
                             ToolTipService.ToolTip="Undo the last Replace-with-backups by restoring the backup files">
                         <StackPanel Orientation="Horizontal" Spacing="4">
                             <FontIcon Glyph="&#xE7A7;" FontSize="12" />
@@ -432,14 +441,16 @@
                     <TextBlock Text="Search in results" />
                 </StackPanel>
             </ToggleButton>
-            <Button Style="{StaticResource SmallButton}" Click="OnExpandAllClicked" Margin="0,4,0,0"
+            <Button x:Name="ExpandAllButton" AutomationProperties.AutomationId="ExpandAllButton"
+                    Style="{StaticResource SmallButton}" Click="OnExpandAllClicked" Margin="0,4,0,0"
                     ToolTipService.ToolTip="Expand all">
                 <StackPanel Orientation="Horizontal" Spacing="4">
                     <FontIcon Glyph="&#xE710;" FontSize="10" />
                     <TextBlock Text="Expand all" />
                 </StackPanel>
             </Button>
-            <Button Style="{StaticResource SmallButton}" Click="OnCollapseAllClicked" Margin="0,4,0,0"
+            <Button x:Name="CollapseAllButton" AutomationProperties.AutomationId="CollapseAllButton"
+                    Style="{StaticResource SmallButton}" Click="OnCollapseAllClicked" Margin="0,4,0,0"
                     ToolTipService.ToolTip="Collapse all">
                 <StackPanel Orientation="Horizontal" Spacing="4">
                     <FontIcon Glyph="&#xE738;" FontSize="10" />
@@ -461,7 +472,9 @@
                 </StackPanel>
             </Button>
             </StackPanel>
-            <TextBlock Text="{x:Bind ViewModel.ResultsSummary, Mode=OneWay}"
+            <TextBlock x:Name="ResultsSummaryText"
+                       AutomationProperties.AutomationId="ResultsSummary"
+                       Text="{x:Bind ViewModel.ResultsSummary, Mode=OneWay}"
                        HorizontalAlignment="Right" VerticalAlignment="Center"
                        Opacity="0.7" FontSize="12"
                        TextTrimming="CharacterEllipsis" />

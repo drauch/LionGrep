@@ -106,7 +106,7 @@ public class PresetTests
         foreach (var item in AppFixture.MainWindow.FindAllDescendants(
             AppFixture.Automation.ConditionFactory.ByControlType(FlaUI.Core.Definitions.ControlType.MenuItem)))
         {
-            if ((item.Name ?? "").StartsWith(name, StringComparison.Ordinal))
+            if ((item.TryGetName() ?? "").StartsWith(name, StringComparison.Ordinal))
             { presetItem = item; break; }
         }
         Assert.That(presetItem, Is.Not.Null, $"Preset menu item starting with '{name}' not found.");
@@ -147,26 +147,49 @@ public class PresetTests
 
     private static int ReadSizeValue(bool isUpper)
     {
-        var numberBoxes = AppFixture.MainWindow.FindAllDescendants(
+        // NumberBox exposes itself as ControlType=Spinner with an inner Edit child holding the
+        // actual value. AsTextBox().Text on the Spinner throws MethodNotSupportedException, so
+        // always reach for the Edit descendant.
+        var spinners = AppFixture.MainWindow.FindAllDescendants(
             AppFixture.Automation.ConditionFactory.ByControlType(FlaUI.Core.Definitions.ControlType.Spinner));
-        if (numberBoxes.Length < 2)
+        AutomationElement target;
+        if (spinners.Length >= 2)
         {
-            numberBoxes = AppFixture.MainWindow.FindAllDescendants(
+            var spinnerEdit = spinners[isUpper ? 1 : 0].FindFirstDescendant(
+                AppFixture.Automation.ConditionFactory.ByControlType(FlaUI.Core.Definitions.ControlType.Edit));
+            Assert.That(spinnerEdit, Is.Not.Null, "Spinner missing its inner Edit child.");
+            target = spinnerEdit!;
+        }
+        else
+        {
+            var edits = AppFixture.MainWindow.FindAllDescendants(
                 AppFixture.Automation.ConditionFactory.ByControlType(FlaUI.Core.Definitions.ControlType.Edit))
                 .Where(e => (e.AutomationId ?? "").Contains("InputBox", StringComparison.OrdinalIgnoreCase))
                 .ToArray();
+            target = edits[isUpper ? 1 : 0];
         }
-        var target = numberBoxes[isUpper ? 1 : 0];
         var text = target.AsTextBox().Text ?? "";
         return int.TryParse(text, out var v) ? v : -1;
     }
 
     private static void TypeIntoNumberBox(AutomationElement nb, int value)
     {
-        var tb = nb.AsTextBox();
-        tb.Focus();
-        tb.Text = "";
-        tb.Enter(value.ToString());
+        // NumberBox in WinUI 3 is a Spinner control type. Setting AsTextBox().Text="" on the
+        // outer Spinner doesn't actually clear the inner Edit's content (it appears to no-op
+        // silently), so typing a new value gets appended to the existing one ("256" + "200"
+        // → "256200" or similar). Reach for the inner Edit and clear via Ctrl+A + Delete.
+        var inner = nb.FindFirstDescendant(
+            AppFixture.Automation.ConditionFactory.ByControlType(FlaUI.Core.Definitions.ControlType.Edit))
+            ?? nb;
+        inner.Focus();
+        Thread.Sleep(50);
+        FlaUI.Core.Input.Keyboard.TypeSimultaneously(
+            FlaUI.Core.WindowsAPI.VirtualKeyShort.CONTROL,
+            FlaUI.Core.WindowsAPI.VirtualKeyShort.KEY_A);
+        Thread.Sleep(30);
+        FlaUI.Core.Input.Keyboard.Press(FlaUI.Core.WindowsAPI.VirtualKeyShort.DELETE);
+        Thread.Sleep(30);
+        inner.AsTextBox().Enter(value.ToString());
         FlaUI.Core.Input.Keyboard.Press(FlaUI.Core.WindowsAPI.VirtualKeyShort.TAB); // commit
         Thread.Sleep(100);
     }

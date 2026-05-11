@@ -32,7 +32,7 @@ public class SearchSplitTests
 
         // And the matching file must be absent.
         foreach (var row in _driver.ResultsList().Items)
-            Assert.That(row.Name ?? "", Does.Not.Contain("unique.cs"));
+            Assert.That(row.TryGetName() ?? "", Does.Not.Contain("unique.cs"));
     }
 
     [Test]
@@ -58,28 +58,26 @@ public class SearchSplitTests
 
     private static void InvokeSplitMenuItem(string itemName)
     {
-        // Find the SearchSplit's chevron and click to expand its flyout, then invoke the item.
+        // Open the SplitButton's flyout. WinUI 3's SplitButton exposes the ExpandCollapse pattern
+        // for its dropdown half, which is the most reliable trigger across SDK builds. Falls back
+        // to keyboard (Focus + Alt+Down) if the pattern isn't surfaced for some reason.
         var split = AppFixture.MainWindow.FindFirstDescendant(
             AppFixture.Automation.ConditionFactory.ByAutomationId("SearchSplit"));
         Assert.That(split, Is.Not.Null, "SearchSplit not found.");
 
-        // SplitButton exposes two interactive parts: the main button and the dropdown chevron.
-        // Look for the chevron sub-button by its accessible name; clicking it opens the menu.
-        var chevron = split!.FindFirstDescendant(
-            AppFixture.Automation.ConditionFactory.ByControlType(ControlType.Button)
-                .And(AppFixture.Automation.ConditionFactory.ByName("Open")));
-        if (chevron is null)
+        var ec = split!.Patterns.ExpandCollapse;
+        if (ec.IsSupported)
         {
-            // Fall back to clicking the second button child.
-            var buttons = split.FindAllChildren(AppFixture.Automation.ConditionFactory.ByControlType(ControlType.Button));
-            Assert.That(buttons.Length, Is.GreaterThan(1), "SplitButton has no chevron sub-button.");
-            buttons[^1].AsButton().Invoke();
+            ec.Pattern.Expand();
         }
         else
         {
-            chevron.AsButton().Invoke();
+            split.Focus();
+            FlaUI.Core.Input.Keyboard.TypeSimultaneously(
+                FlaUI.Core.WindowsAPI.VirtualKeyShort.LMENU,
+                FlaUI.Core.WindowsAPI.VirtualKeyShort.DOWN);
         }
-        Thread.Sleep(200);
+        Thread.Sleep(300);
 
         var menuItem = AppFixture.MainWindow.FindFirstDescendant(
             AppFixture.Automation.ConditionFactory.ByControlType(ControlType.MenuItem)
