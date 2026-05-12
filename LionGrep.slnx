@@ -7,7 +7,9 @@
   <Project Path="LionGrep/LionGrep.csproj">
     <Platform Solution="*|x64" Project="x64" />
     <Platform Solution="*|ARM64" Project="ARM64" />
-    <Deploy />
+    <!-- No <Deploy /> on purpose: the project is unpackaged (WindowsPackageType=None in
+         LionGrep.csproj), so VS F5 launches the exe directly. Auto-deploying an MSIX layout
+         would fail because the unpackaged build doesn't emit an appxrecipe. -->
   </Project>
   <Project Path="LionGrep.Core/LionGrep.Core.csproj">
     <Platform Solution="*|x64" Project="Any CPU" />

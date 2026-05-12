@@ -135,9 +135,13 @@ jobs:
         run: |
           $outDir = "$env:GITHUB_WORKSPACE\artifacts\msix"
           New-Item -ItemType Directory -Force -Path $outDir | Out-Null
+          # WindowsPackageType=MSIX overrides the csproj's `=None`. The csproj keeps None so
+          # the unpackaged-launch path (UI tests, F5) works; this packaging step temporarily
+          # switches to MSIX so the appx targets generate the package.
           dotnet msbuild LionGrep/LionGrep.csproj `
             /p:Configuration=${{ env.CONFIGURATION }} `
             /p:Platform=${{ env.BUILD_PLATFORM }} `
+            /p:WindowsPackageType=MSIX `
             /p:GenerateAppxPackageOnBuild=true `
             /p:AppxPackageSigningEnabled=false `
             /p:UapAppxPackageBuildMode=SideloadOnly `

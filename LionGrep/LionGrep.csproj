@@ -16,12 +16,18 @@
     <NoWarn>$(NoWarn);MVVMTK0045</NoWarn>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>
-    <!-- Default packaged + framework-dependent (the WinUI 3 template default). The build still
-         produces a standalone LionGrep.exe alongside the MSIX layout (used by UI tests, which
-         launch the exe directly), but VS's F5/Ctrl+F5 deploys the MSIX so debug-attach works.
-         Customer-facing MSIX gets the WindowsAppRuntime dependency auto-injected by
-         EnableMsixTooling — Store resolves it on install. Dev/CI machines still need the
-         WindowsAppRuntime installed for the unpackaged exe path (UI tests, CI workflow). -->
+    <!-- WindowsPackageType=None is required for the unpackaged-launch path: the WinAppSDK
+         auto-initializer (the cctor that bootstraps Microsoft.WindowsAppRuntime on startup) is
+         only generated when this property is set. Without it, a direct Process.Start(...) on
+         LionGrep.exe runs the binary but never initializes the framework, never creates a main
+         window. UI tests rely on the unpackaged launch path; the CI workflow's MSIX packaging
+         step (msbuild ... /p:GenerateAppxPackageOnBuild=true) still produces an MSIX from the
+         packaged appx targets that EnableMsixTooling=true brings in.
+         Trade-off: VS F5/Ctrl+F5 doesn't auto-deploy an MSIX layout — we remove the matching
+         `<Deploy />` element from LionGrep.slnx so F5 just launches the exe directly (debug
+         attach works the same way). For an MSIX-install test loop, right-click → Generate MSIX
+         Package, or push a release/x.y.z branch and let CI build the MSIX. -->
+    <WindowsPackageType>None</WindowsPackageType>
   </PropertyGroup>
 
   <ItemGroup>
