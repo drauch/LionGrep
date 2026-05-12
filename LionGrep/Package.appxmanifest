@@ -10,14 +10,14 @@
 
   <Identity
     Name="b6273505-b9ea-4a63-ad8a-c8555fa24e40"
-    Publisher="CN=drauch"
+    Publisher="CN=Lion Tools"
     Version="1.0.0.0" />
 
   <mp:PhoneIdentity PhoneProductId="b6273505-b9ea-4a63-ad8a-c8555fa24e40" PhonePublisherId="00000000-0000-0000-0000-000000000000"/>
 
   <Properties>
     <DisplayName>LionGrep</DisplayName>
-    <PublisherDisplayName>drauch</PublisherDisplayName>
+    <PublisherDisplayName>Lion Tools</PublisherDisplayName>
     <Logo>Assets\StoreLogo.png</Logo>
   </Properties>
 
