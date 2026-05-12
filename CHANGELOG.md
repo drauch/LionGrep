@@ -15,7 +15,7 @@ can't find a matching entry. Sections are conventionally one or more of: **Added
 <!-- Entries land here while in flight; rename to "## [x.y.z] - YYYY-MM-DD" when cutting a
      release branch. -->
 
-## [1.3.37] - 2026-05-11
+## [1.3.38] - 2026-05-12
 
 ### Added
 - Initial release of LionGrep.
