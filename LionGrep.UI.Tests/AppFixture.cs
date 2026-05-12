@@ -103,27 +103,38 @@ public sealed class AppFixture
     }
 
     /// <summary>
-    /// LionGreps the most recently built LionGrep.exe by walking up from the test bin folder. Tries
-    /// Debug then Release. Throws a clear error if nothing's been built yet — the suite isn't
-    /// going to magically build the WinUI app, the dev runs `dotnet build LionGrep -c Debug -p:Platform=x64`
-    /// before kicking these off.
+    /// Locates the most recently built LionGrep.exe by walking up from the test bin folder. Tries
+    /// Debug then Release configurations and the two possible layouts emitted by `dotnet build`:
+    /// with a `win-x64\` RID subfolder (when the local publish profile auto-applies) and without
+    /// (the bare TFM output dir on a fresh runner). Throws a clear error if nothing's been built
+    /// yet — the suite isn't going to magically build the WinUI app.
     /// </summary>
     private static string LionGrepBuiltExe()
     {
+        var binBaseSegments = new[] { "LionGrep", "bin", "x64" };
+        var tfm = "net10.0-windows10.0.19041.0";
+
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
         while (dir is not null)
         {
             foreach (var config in new[] { "Debug", "Release" })
             {
-                var candidate = Path.Combine(
-                    dir.FullName, "LionGrep", "bin", "x64", config,
-                    "net10.0-windows10.0.19041.0", "win-x64", "LionGrep.exe");
-                if (File.Exists(candidate)) return candidate;
+                var tfmDir = Path.Combine(new[] { dir.FullName }.Concat(binBaseSegments).Append(config).Append(tfm).ToArray());
+
+                // 1) Bare TFM output (framework-dependent build on a fresh runner / CI default).
+                var bare = Path.Combine(tfmDir, "LionGrep.exe");
+                if (File.Exists(bare)) return bare;
+
+                // 2) RID-suffixed output (local builds when win-x64.pubxml gets auto-applied,
+                //    or any self-contained build).
+                var rid = Path.Combine(tfmDir, "win-x64", "LionGrep.exe");
+                if (File.Exists(rid)) return rid;
             }
             dir = dir.Parent;
         }
         throw new FileNotFoundException(
-            "Could not find LionGrep.exe in any sibling LionGrep/bin/x64/{Debug,Release}/.../win-x64/. " +
+            "Could not find LionGrep.exe in any sibling LionGrep/bin/x64/{Debug,Release}/" +
+            "net10.0-windows10.0.19041.0/(win-x64/)?. " +
             "Build it first: `dotnet build LionGrep/LionGrep.csproj -c Debug -p:Platform=x64`.");
     }
 

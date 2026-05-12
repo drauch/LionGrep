@@ -26,7 +26,9 @@ public class HotkeyTests
         _driver.SetText("SearchPatternBox", "class");
         _driver.SetCheck("Case sensitive", true);
 
+        _driver.BringToForeground();        // CI: ensure the window receives keystrokes
         searchInBox.Focus();
+        Thread.Sleep(50);
         Keyboard.TypeSimultaneously(VirtualKeyShort.CONTROL, VirtualKeyShort.RETURN);
         _driver.WaitForSearchToFinish();
 

@@ -133,10 +133,14 @@ internal sealed class AppDriver
 
     public void SetText(string automationId, string text)
     {
+        // ValuePattern.SetValue is atomic and doesn't depend on the LionGrep window having OS
+        // focus. The previous focus+Text=""+Enter() pattern was reliable locally but fragile on
+        // CI runners where the desktop session isn't foregrounded — Enter() emits keystrokes,
+        // and if focus is elsewhere they land in the wrong window, leaving the textbox with its
+        // previous content. SetValue goes through UIA directly.
         var tb = TextBox(automationId);
-        tb.Focus();
-        tb.Text = "";                  // clear
-        tb.Enter(text);
+        tb.Focus();                                          // best-effort
+        tb.Patterns.Value.Pattern.SetValue(text);
     }
 
     public string GetText(string automationId) => TextBox(automationId).Text;
@@ -152,30 +156,99 @@ internal sealed class AppDriver
 
     // ---- Search lifecycle --------------------------------------------------
 
-#pragma warning disable S2325 // Instance methods by API design — every test fixture calls these via `_driver.TriggerXxx()`.
+    /// <summary>Triggers a search using whichever path lands first: UIA Invoke on the SearchSplit's
+    /// primary button (works without OS focus, our usual win on CI), with a Ctrl+Enter keyboard
+    /// fallback (good locally where keyboard input reaches the foregrounded window). One of the
+    /// two fires on any host. The 800 ms gate skips the keyboard path when UIA already moved the
+    /// summary, avoiding double-trigger and "second search overwrites first" races.</summary>
     public void TriggerSearch()
     {
-        // Ctrl+Enter is the user-facing keyboard shortcut and bypasses focus assumptions.
+        var startSummary = ReadResultsSummary();
+        var split = _window.FindFirstDescendant(_cf.ByAutomationId("SearchSplit"));
+        if (split is not null)
+        {
+            // In WinUI 3, the SplitButton's primary half is the first inner Button child — but
+            // invoking the wrapper works fine in this build, so we keep it simple.
+            var target = split.FindFirstChild(_cf.ByControlType(ControlType.Button)) ?? split;
+#pragma warning disable RCS1075
+            try { target.AsButton().Invoke(); }
+            catch (Exception) { /* fall through to keyboard fallback */ }
+#pragma warning restore RCS1075
+        }
+
+        // If UIA worked, skip the keyboard. We can't always *prove* it worked (identical-result
+        // re-searches don't change the summary), so use a short observation window and only fall
+        // back if there's no observable change and no "(running)".
+        var deadline = DateTime.UtcNow + TimeSpan.FromMilliseconds(800);
+        while (DateTime.UtcNow < deadline)
+        {
+            var s = ReadResultsSummary();
+            if (s.Contains("(running)") || !string.Equals(s, startSummary, StringComparison.Ordinal))
+                return;
+            Thread.Sleep(80);
+        }
+
+#pragma warning disable S2325
+        BringToForeground();
         Keyboard.TypeSimultaneously(VirtualKeyShort.CONTROL, VirtualKeyShort.RETURN);
+#pragma warning restore S2325
     }
 
+#pragma warning disable S2325
+
+    /// <summary>Ctrl+Alt+Enter.</summary>
     public void TriggerReplaceImmediate()
     {
-        // Ctrl+Alt+Enter — replace bypassing the 3-way dialog.
+        BringToForeground();
         // VirtualKeyShort uses LMENU / RMENU for the Alt keys (mirroring Win32 VK_LMENU / VK_RMENU);
         // there's no plain MENU constant, so we send Left-Alt explicitly.
         Keyboard.TypeSimultaneously(VirtualKeyShort.CONTROL, VirtualKeyShort.LMENU, VirtualKeyShort.RETURN);
     }
 
-    public void PressEscape() => Keyboard.Press(VirtualKeyShort.ESCAPE);
+    public void PressEscape()
+    {
+        BringToForeground();
+        Keyboard.Press(VirtualKeyShort.ESCAPE);
+    }
 #pragma warning restore S2325
 
-    /// <summary>Polls the status text until the "(running)" suffix disappears or we time out.</summary>
+    /// <summary>Brings the LionGrep window to the OS foreground best-effort, so keyboard input
+    /// reaches the accelerator scope. Plain <see cref="NativeMethods.SetForegroundWindow"/>
+    /// (subject to Windows' "can't steal focus" rules) is good enough for most cases; the
+    /// AttachThreadInput escalation we tried was destabilising the test process. Exposed
+    /// publicly for accelerator-specific tests.</summary>
+    public void BringToForeground()
+    {
+        var hwnd = _window.Properties.NativeWindowHandle.ValueOrDefault;
+        if (hwnd != IntPtr.Zero) NativeMethods.SetForegroundWindow(hwnd);
+        Thread.Sleep(40);
+    }
+
+    /// <summary>Waits until the results summary no longer shows "(running)".
+    /// <para>Tries to detect the new search starting (summary changed, or "(running)" present)
+    /// within 3 s as a best-effort signal — but doesn't throw if neither happens. Reason: on
+    /// fast hosts the search can complete with output identical to the previous search before we
+    /// catch the "(running)" intermediate state, leaving us unable to tell a fast same-result
+    /// search from a no-op. Throwing would produce a misleading failure. If no search actually
+    /// ran, the test's own assertion will catch it with a clearer error.</para></summary>
     public void WaitForSearchToFinish(TimeSpan? timeout = null)
-        => WaitHelpers.WaitUntil(
+    {
+        var startSummary = ReadResultsSummary();
+        // Phase 1 (best-effort, no throw): observe the new search starting.
+        var phase1Deadline = DateTime.UtcNow + TimeSpan.FromSeconds(3);
+        while (DateTime.UtcNow < phase1Deadline)
+        {
+            var s = ReadResultsSummary();
+            if (s.Contains("(running)") || !string.Equals(s, startSummary, StringComparison.Ordinal))
+                break;
+            Thread.Sleep(80);
+        }
+        // Phase 2: any "(running)" state clears.
+        WaitHelpers.WaitUntil(
             () => { var s = ReadResultsSummary(); return !string.IsNullOrEmpty(s) && !s.Contains("(running)"); },
             timeout ?? TimeSpan.FromSeconds(30),
             "search to finish");
+    }
 
     public string ReadResultsSummary()
     {
