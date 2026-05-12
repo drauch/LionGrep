@@ -84,8 +84,12 @@ jobs:
           Write-Host "Patched manifest Identity Version → ${{ steps.version.outputs.version4 }}"
 
       # ---- Build ----
+      # Pass Platform on restore too: the .slnx's Build="*|Any CPU" Project="false" opt-outs
+      # on the LionGrep main + UI.Tests projects mean that an Any-CPU restore (the slnx default)
+      # skips them entirely, leaving no project.assets.json for the subsequent --no-restore
+      # build to use.
       - name: Restore
-        run: dotnet restore LionGrep.slnx
+        run: dotnet restore LionGrep.slnx -p:Platform=${{ env.BUILD_PLATFORM }}
 
       - name: Build solution
         run: >
