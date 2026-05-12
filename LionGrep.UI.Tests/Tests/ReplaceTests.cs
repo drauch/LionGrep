@@ -60,9 +60,10 @@ public class ReplaceTests
                     .And(AppFixture.Automation.ConditionFactory.ByName("Replace w/o backups"))),
             description: "'Replace w/o backups' button on 3-way dialog");
         noBak.AsButton().Invoke();
-        Thread.Sleep(800);
 
-        Assert.That(File.ReadAllText(Path.Combine(_isolatedDir, "a.cs")), Is.EqualTo("OMEGA bravo OMEGA\n"));
+        // Wait for replace to finish writing a.cs (the engine processes files in parallel; one
+        // finishing is a strong signal the rest are done too).
+        WaitHelpers.WaitForFileContent(Path.Combine(_isolatedDir, "a.cs"), "OMEGA bravo OMEGA\n");
         Assert.That(File.ReadAllText(Path.Combine(_isolatedDir, "b.cs")), Is.EqualTo("OMEGA charlie\n"));
         Assert.That(File.Exists(Path.Combine(_isolatedDir, "a.cs.lgbak")), Is.False, "No-backup path must not write backup files.");
     }
@@ -103,14 +104,22 @@ public class ReplaceTests
                     .And(AppFixture.Automation.ConditionFactory.ByName("Replace with backups"))),
             description: "'Replace with backups' button on 3-way dialog");
         primary.AsButton().Invoke();
-        Thread.Sleep(800);
+
+        // Wait for replace-with-backups to finish: the .lgbak file appearing is the canonical
+        // end-of-operation signal.
+        WaitHelpers.WaitForFileExists(Path.Combine(_isolatedDir, "a.cs.lgbak"));
 
         // Sabotage: delete the backup files we just wrote.
         foreach (var bak in Directory.GetFiles(_isolatedDir, "*.lgbak"))
             File.Delete(bak);
 
         _driver.ButtonByContent("Undo").Invoke();
-        Thread.Sleep(800);
+
+        // Wait for the undo to complete — summary updates to mention the failed restores once
+        // the operation finishes.
+        WaitHelpers.WaitUntil(
+            () => (_driver.ReadResultsSummary()).Contains("failed", StringComparison.OrdinalIgnoreCase),
+            description: "Undo summary to mention failed restores");
 
         var summary = _driver.ReadResultsSummary();
         Assert.That(summary, Does.Contain("failed").IgnoreCase,
@@ -134,17 +143,14 @@ public class ReplaceTests
                     .And(AppFixture.Automation.ConditionFactory.ByName("Replace with backups"))),
             description: "'Replace with backups' button on 3-way dialog");
         primary.AsButton().Invoke();
-        Thread.Sleep(800);
 
-        // After replace: contents changed AND backup files exist.
+        // After replace: backup file appears.
+        WaitHelpers.WaitForFileExists(Path.Combine(_isolatedDir, "a.cs.lgbak"));
         Assert.That(File.ReadAllText(Path.Combine(_isolatedDir, "a.cs")), Is.Not.EqualTo(originalA));
-        Assert.That(File.Exists(Path.Combine(_isolatedDir, "a.cs.lgbak")), Is.True);
 
-        // Undo restores from the backup file.
+        // Undo: backup file disappears AND a.cs reverts to original.
         _driver.ButtonByContent("Undo").Invoke();
-        Thread.Sleep(800);
-
+        WaitHelpers.WaitForFileMissing(Path.Combine(_isolatedDir, "a.cs.lgbak"));
         Assert.That(File.ReadAllText(Path.Combine(_isolatedDir, "a.cs")), Is.EqualTo(originalA));
-        Assert.That(File.Exists(Path.Combine(_isolatedDir, "a.cs.lgbak")), Is.False, "Undo deletes the backup file after restoring.");
     }
 }

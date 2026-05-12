@@ -62,6 +62,30 @@ internal static class WaitHelpers
         return null;
     }
 
+    // ---- File-system condition shortcuts ----
+
+    /// <summary>Polls until the file exists and its full text equals <paramref name="expected"/>.
+    /// Use to wait for a Replace operation to finish writing a target file.</summary>
+    public static void WaitForFileContent(string path, string expected, TimeSpan? timeout = null) =>
+        WaitUntil(
+            () => File.Exists(path) && string.Equals(File.ReadAllText(path), expected, StringComparison.Ordinal),
+            timeout,
+            $"file '{Path.GetFileName(path)}' to contain expected content");
+
+    /// <summary>Polls until the file exists. Use to wait for a backup (.lgbak) to be written.</summary>
+    public static void WaitForFileExists(string path, TimeSpan? timeout = null) =>
+        WaitUntil(
+            () => File.Exists(path),
+            timeout,
+            $"file '{Path.GetFileName(path)}' to exist");
+
+    /// <summary>Polls until the file no longer exists. Use to wait for Undo to delete a backup.</summary>
+    public static void WaitForFileMissing(string path, TimeSpan? timeout = null) =>
+        WaitUntil(
+            () => !File.Exists(path),
+            timeout,
+            $"file '{Path.GetFileName(path)}' to be missing");
+
     /// <summary>Polls <paramref name="predicate"/> until it returns true or the timeout expires.</summary>
     public static void WaitUntil(Func<bool> predicate, TimeSpan? timeout = null, string? description = null)
     {

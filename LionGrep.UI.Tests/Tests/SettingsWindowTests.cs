@@ -95,10 +95,16 @@ public class SettingsWindowTests
                     .And(AppFixture.Automation.ConditionFactory.ByName("Reset everything"))),
             description: "'Reset everything' confirmation button");
         confirm.AsButton().Invoke();
-        Thread.Sleep(800);
 
-        using var afterReset = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(AppFixture.SandboxRegistryPath);
-        Assert.That(afterReset, Is.Null, "Reset everything must delete the entire app subtree.");
+        // Wait for the registry subtree to actually be deleted — that's the canonical end
+        // signal for "reset everything" since the operation is otherwise UI-side fire-and-forget.
+        WaitHelpers.WaitUntil(
+            () =>
+            {
+                using var k = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(AppFixture.SandboxRegistryPath);
+                return k is null;
+            },
+            description: "registry sandbox subtree to be deleted");
 
         ForceCloseSettingsWindow();
     }
