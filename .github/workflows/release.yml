@@ -55,9 +55,6 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      - name: Setup MSBuild
-        uses: microsoft/setup-msbuild@v2
-
       # ---- WindowsAppRuntime ----
       # The framework-dependent build needs the WindowsAppRuntime package on the runner so the
       # unpackaged exe (used by UI tests) can launch. The version here MUST match the
@@ -127,15 +124,18 @@ jobs:
           path: artifacts/test-results
 
       # ---- MSIX ----
-      # Use MSBuild for the Appx packaging step. dotnet build doesn't trigger the Appx targets by
-      # itself for single-project MSIX. AppxPackageSigningEnabled=false keeps it unsigned for now
-      # (SignPath step gets inserted here in a later iteration).
+      # `dotnet msbuild` (not the standalone `msbuild` from VS Build Tools) so we use the
+      # MSBuild that ships with the .NET 10 SDK — .NET 10 requires MSBuild 18+, which the
+      # VS 2022 Build Tools image doesn't have. dotnet build alone doesn't fire the Appx
+      # targets for single-project MSIX, so we go through msbuild explicitly with the
+      # GenerateAppxPackageOnBuild trigger. AppxPackageSigningEnabled=false keeps it unsigned
+      # for now (SignPath step gets inserted here in a later iteration).
       - name: Package unsigned MSIX
         shell: pwsh
         run: |
           $outDir = "$env:GITHUB_WORKSPACE\artifacts\msix"
           New-Item -ItemType Directory -Force -Path $outDir | Out-Null
-          msbuild LionGrep/LionGrep.csproj `
+          dotnet msbuild LionGrep/LionGrep.csproj `
             /p:Configuration=${{ env.CONFIGURATION }} `
             /p:Platform=${{ env.BUILD_PLATFORM }} `
             /p:GenerateAppxPackageOnBuild=true `
