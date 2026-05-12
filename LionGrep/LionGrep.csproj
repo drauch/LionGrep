@@ -9,7 +9,11 @@
     <RuntimeIdentifiers>win-x86;win-x64;win-arm64</RuntimeIdentifiers>
     <UseWinUI>true</UseWinUI>
     <WinUISDKReferences>false</WinUISDKReferences>
-    <EnableMsixTooling>true</EnableMsixTooling>
+    <!-- EnableMsixTooling=false so VS doesn't treat the project as MSIX-deployable (F5 won't
+         insist on a deploy step). The CI workflow's MSIX packaging step overrides this back to
+         true on the command line so the appx targets run. Pattern matches the WindowsPackageType
+         split below. -->
+    <EnableMsixTooling>false</EnableMsixTooling>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>

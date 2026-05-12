@@ -1,5 +1,9 @@
 <Solution>
   <Configurations>
+    <!-- Any CPU is kept as a solution platform mainly so `dotnet test` (no args, which defaults
+         to Any CPU) discovers and runs the AnyCPU test projects. The architecture-specific
+         projects (LionGrep main, LionGrep.UI.Tests) opt out via <Build Solution="*|Any CPU"
+         Project="false" />. -->
     <Platform Name="Any CPU" />
     <Platform Name="x64" />
     <Platform Name="ARM64" />
@@ -7,9 +11,15 @@
   <Project Path="LionGrep/LionGrep.csproj">
     <Platform Solution="*|x64" Project="x64" />
     <Platform Solution="*|ARM64" Project="ARM64" />
-    <!-- No <Deploy /> on purpose: the project is unpackaged (WindowsPackageType=None in
-         LionGrep.csproj), so VS F5 launches the exe directly. Auto-deploying an MSIX layout
-         would fail because the unpackaged build doesn't emit an appxrecipe. -->
+    <!-- WinUI 3 app needs an architecture; Any CPU doesn't apply. -->
+    <Build Solution="*|Any CPU" Project="false" />
+    <!-- Explicit "do not deploy" — VS infers MSIX deploy from EnableMsixTooling and other
+         signals even without a <Deploy /> element, so we have to force-disable. The project
+         is unpackaged (WindowsPackageType=None in LionGrep.csproj); F5 should just launch the
+         exe directly. Auto-deploying an MSIX layout would fail because the unpackaged build
+         doesn't emit an appxrecipe. Same syntax pattern as the <Build ... Project="false" />
+         we use to exclude AnyCPU projects from ARM64 builds. -->
+    <Deploy Solution="*|*" Project="false" />
   </Project>
   <Project Path="LionGrep.Core/LionGrep.Core.csproj">
     <Platform Solution="*|x64" Project="Any CPU" />
@@ -22,6 +32,8 @@
   <Project Path="LionGrep.UI.Tests/LionGrep.UI.Tests.csproj">
     <Platform Solution="*|x64" Project="x64" />
     <Build Solution="*|ARM64" Project="false" />
+    <!-- UI tests target net10.0-windows; the project's <Platforms> is x64-only. -->
+    <Build Solution="*|Any CPU" Project="false" />
   </Project>
   <Project Path="LionGrep.Bench/LionGrep.Bench.csproj">
     <Platform Solution="*|x64" Project="Any CPU" />
