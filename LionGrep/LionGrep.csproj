@@ -17,12 +17,12 @@
     <NoWarn>$(NoWarn);MVVMTK0045</NoWarn>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>
-    <!-- Framework-dependent build: the WinAppRuntime is NOT bundled. Smaller MSIX (~5 MB vs
-         ~80 MB) and the framework is shared across apps via the system-installed framework
-         package. Customer-facing MSIX gets the framework dep auto-injected by EnableMsixTooling.
-         Dev/CI machines must install windowsappruntimeinstall-x64.exe matching the NuGet version
-         (aka.ms/windowsappsdk/2.0/2.0.1/windowsappruntimeinstall-x64.exe at the time of writing). -->
-    <WindowsPackageType>None</WindowsPackageType>
+    <!-- Default packaged + framework-dependent (the WinUI 3 template default). The build still
+         produces a standalone LionGrep.exe alongside the MSIX layout (used by UI tests, which
+         launch the exe directly), but VS's F5/Ctrl+F5 deploys the MSIX so debug-attach works.
+         Customer-facing MSIX gets the WindowsAppRuntime dependency auto-injected by
+         EnableMsixTooling — Store resolves it on install. Dev/CI machines still need the
+         WindowsAppRuntime installed for the unpackaged exe path (UI tests, CI workflow). -->
   </PropertyGroup>
 
   <ItemGroup>
