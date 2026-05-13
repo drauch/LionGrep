@@ -61,11 +61,12 @@ public class SearchSplitTests
         // Open the SplitButton's flyout. WinUI 3's SplitButton exposes the ExpandCollapse pattern
         // for its dropdown half, which is the most reliable trigger across SDK builds. Falls back
         // to keyboard (Focus + Alt+Down) if the pattern isn't surfaced for some reason.
-        var split = AppFixture.MainWindow.FindFirstDescendant(
-            AppFixture.Automation.ConditionFactory.ByAutomationId("SearchSplit"));
-        Assert.That(split, Is.Not.Null, "SearchSplit not found.");
+        var split = WaitHelpers.WaitFor(
+            () => AppFixture.MainWindow.FindFirstDescendant(
+                AppFixture.Automation.ConditionFactory.ByAutomationId("SearchSplit")),
+            description: "SearchSplit");
 
-        var ec = split!.Patterns.ExpandCollapse;
+        var ec = split.Patterns.ExpandCollapse;
         if (ec.IsSupported)
         {
             ec.Pattern.Expand();
