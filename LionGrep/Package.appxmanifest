@@ -10,7 +10,7 @@
 
   <Identity
     Name="LionTools.LionGrep"
-    Publisher="CN=Lion Tools"
+    Publisher="CN=E269C28C-9E99-4C6C-B821-8FD37DB0B108"
     Version="1.0.0.0" />
 
   <mp:PhoneIdentity PhoneProductId="b6273505-b9ea-4a63-ad8a-c8555fa24e40" PhonePublisherId="00000000-0000-0000-0000-000000000000"/>
