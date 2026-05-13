@@ -7,11 +7,8 @@ using Microsoft.UI.Xaml;
 
 namespace LionGrep.ViewModels;
 
-/// <summary>
-/// One slice of a rendered string in the results view, tagged with its highlight semantics.
-/// The XAML binds three Visibility props (one per kind) so each segment paints itself with the
-/// matching background — no IValueConverter required.
-/// </summary>
+/// <summary>One slice of a rendered string in the results view, tagged with its highlight semantics.
+/// Rendered by <see cref="LionGrep.Controls.HighlightedInlines"/>.</summary>
 public sealed class TextSegment
 {
     public TextSegment(string text, HighlightKind kind)
@@ -22,10 +19,6 @@ public sealed class TextSegment
 
     public string Text { get; }
     public HighlightKind Kind { get; }
-
-    public Visibility EngineMatchVisibility => Kind == HighlightKind.EngineMatch ? Visibility.Visible : Visibility.Collapsed;
-    public Visibility FilterMatchVisibility => Kind == HighlightKind.FilterMatch ? Visibility.Visible : Visibility.Collapsed;
-    public Visibility PlainVisibility => Kind == HighlightKind.None ? Visibility.Visible : Visibility.Collapsed;
 }
 
 public partial class FileMatchViewModel : ObservableObject

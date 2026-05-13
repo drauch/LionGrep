@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using LionGrep.Core.Logic;
 using LionGrep.ViewModels;
 using Microsoft.UI;
+using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Documents;
@@ -11,15 +12,15 @@ namespace LionGrep.Controls;
 
 /// <summary>
 /// Attached property that lets a <see cref="TextBlock"/> render an
-/// <see cref="IReadOnlyList{TextSegment}"/> as a sequence of inlines, with engine-match (yellow)
-/// and filter-match (blue) backgrounds applied to the relevant pieces. Used for the Directory
-/// column where we want the same yellow/blue treatment as the file-name and matched-line cells
-/// but also need <c>TextTrimming="CharacterEllipsis"</c> to survive long paths — that rules out
-/// an <c>ItemsControl</c>-of-Borders, since trimming only works inside a single TextBlock.
+/// <see cref="IReadOnlyList{TextSegment}"/> as a single line of text with engine-match (yellow)
+/// and filter-match (blue) backgrounds applied to the relevant character ranges. Used for every
+/// highlight-aware cell — file name, directory, and matched line.
 ///
-/// <para>Plain segments become <see cref="Run"/> instances; highlighted segments become an
-/// <see cref="InlineUIContainer"/> wrapping a <see cref="Border"/> with the appropriate background.
-/// The TextBlock continues to perform its own ellipsis on the resulting flow.</para>
+/// <para>Segments become <see cref="Run"/> inlines (so engine matches can use SemiBold weight) plus
+/// <see cref="TextHighlighter"/> ranges (for the colored backgrounds). This is the canonical WinUI
+/// pattern: <see cref="InlineUIContainer"/>-wrapped Borders mid-flow break subsequent inline
+/// layout on long lines — content past the first highlight stops rendering. TextHighlighters paint
+/// over the existing text without disturbing the flow, so spacing and trailing content are preserved.</para>
 /// </summary>
 public static class HighlightedInlines
 {
@@ -46,32 +47,28 @@ public static class HighlightedInlines
         if (d is not TextBlock tb) return;
 
         tb.Inlines.Clear();
+        tb.TextHighlighters.Clear();
         if (e.NewValue is not IReadOnlyList<TextSegment> segments) return;
 
+        var index = 0;
         foreach (var seg in segments)
         {
-            if (seg.Kind == HighlightKind.None)
-            {
-                tb.Inlines.Add(new Run { Text = seg.Text });
-                continue;
-            }
-
             var isEngine = seg.Kind == HighlightKind.EngineMatch;
-            var inner = new TextBlock
+            var run = new Run { Text = seg.Text };
+            if (isEngine) run.FontWeight = FontWeights.SemiBold;
+            tb.Inlines.Add(run);
+
+            if (seg.Kind != HighlightKind.None)
             {
-                Text = seg.Text,
-                FontSize = tb.FontSize,
-                FontFamily = tb.FontFamily,
-                FontWeight = tb.FontWeight,
-                Foreground = isEngine ? BlackBrush : WhiteBrush,
-            };
-            var border = new Border
-            {
-                Background = isEngine ? EngineBrush : FilterBrush,
-                Padding = new Thickness(0),
-                Child = inner,
-            };
-            tb.Inlines.Add(new InlineUIContainer { Child = border });
+                var hl = new TextHighlighter
+                {
+                    Background = isEngine ? EngineBrush : FilterBrush,
+                    Foreground = isEngine ? BlackBrush : WhiteBrush,
+                };
+                hl.Ranges.Add(new TextRange { StartIndex = index, Length = seg.Text.Length });
+                tb.TextHighlighters.Add(hl);
+            }
+            index += seg.Text.Length;
         }
     }
 }
